@@ -1,7 +1,7 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faMoon, faBars, faBell } from "@fortawesome/free-solid-svg-icons";
 
-export default function Navbar({ toggleSidebar, darkMode, handleThemeToggle }) {
+export default function NavBar({ toggleSidebar, darkMode, handleThemeToggle }) {
   return (
     <nav className="w-full flex items-center justify-between px-4 md:px-6 py-4 
                     bg-white dark:bg-[#000000] shadow-sm transition-colors">

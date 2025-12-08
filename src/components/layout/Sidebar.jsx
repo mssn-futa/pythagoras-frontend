@@ -3,7 +3,7 @@ import { faHome, faBook, faBriefcase, faUser, faMosque } from "@fortawesome/free
 import logo from "../../assets/logo.png";
 import profilePic from "../../assets/profile.png";
 
-const Sidebar = ({ isOpen, toggleSidebar }) => {
+const SideBar = ({ isOpen, toggleSidebar }) => {
   return (
     <aside
       className={`fixed top-0 left-0 h-full bg-white dark:bg-[#000000] shadow-lg border-none w-[270px]
@@ -21,11 +21,11 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
 
       {/* Navigation Links */}
       <nav className="flex flex-col gap-4 flex-1">
-        <SidebarLink icon={faHome} label="Home" to="/" hoverFrom="#2A742F" hoverTo="#04AF43" />
-        <SidebarLink icon={faMosque} label="Dawah" to="/dawah" hoverFrom="#C002C0" hoverTo="#FF31FF" />
-        <SidebarLink icon={faBook} label="Academics" to="/academics" hoverFrom="#0284C7" hoverTo="#0EA5E9" />
-        <SidebarLink icon={faBriefcase} label="Empowerment Hub" to="/empowerment" hoverFrom="#FFB300" hoverTo="#EAB308" />
-        <SidebarLink icon={faUser} label="Profile" to="/profile" hoverFrom="#2D2D2D" hoverTo="#949292" />
+        <SideBarLink icon={faHome} label="Home" to="/" hoverFrom="#2A742F" hoverTo="#04AF43" />
+        <SideBarLink icon={faMosque} label="Dawah" to="/dawah" hoverFrom="#C002C0" hoverTo="#FF31FF" />
+        <SideBarLink icon={faBook} label="Academics" to="/academics" hoverFrom="#0284C7" hoverTo="#0EA5E9" />
+        <SideBarLink icon={faBriefcase} label="Empowerment Hub" to="/empowerment" hoverFrom="#FFB300" hoverTo="#EAB308" />
+        <SideBarLink icon={faUser} label="Profile" to="/profile" hoverFrom="#2D2D2D" hoverTo="#949292" />
       </nav>
 
       {/* Profile */}
@@ -40,7 +40,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
   );
 };
 
-const SidebarLink = ({ icon, label, to, hoverFrom, hoverTo }) => (
+const SideBarLink = ({ icon, label, to, hoverFrom, hoverTo }) => (
   <a
     href={to}
     className="group flex items-center gap-3 p-2 rounded-lg transition-all duration-300 relative overflow-hidden"
@@ -61,4 +61,4 @@ const SidebarLink = ({ icon, label, to, hoverFrom, hoverTo }) => (
   </a>
 );
 
-export default Sidebar;
+export default SideBar;
