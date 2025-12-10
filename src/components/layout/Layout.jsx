@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import SideBar from "./SideBar";
-import NavBar from "./NavBar";
+import SideBar from "./Sidebar";
+import NavBar from "./Navbar";
 
 
 export default function Layout({ children }) {
