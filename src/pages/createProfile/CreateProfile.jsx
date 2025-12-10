@@ -69,8 +69,9 @@ const CreateProfile = () => {
     receiptFile;
 
   return (
-    <div className="min-h-screen w-full relative bg-white lg:bg-none">
-      <div
+    <main className="min-h-screen w-full relative bg-white lg:bg-none">
+    
+      <aside
         className="hidden lg:flex relative z-10 min-h-screen items-center justify-center px-10 py-10"
         style={{
           backgroundImage: `url(${bgImage})`,
@@ -78,9 +79,10 @@ const CreateProfile = () => {
           backgroundPosition: "center",
         }}
       >
-        <div className="w-full max-w-6xl bg-white/95 shadow-2xl rounded-2xl grid lg:grid-cols-2 border border-gray-200 overflow-hidden">
-          <div className="p-12 flex flex-col justify-between bg-gradient-to-br from-[#2A742F] to-[#04AF43] text-white">
-            <div className="space-y-4">
+
+        <section className="w-full max-w-6xl bg-white/95 shadow-2xl rounded-2xl grid lg:grid-cols-2 border border-gray-200 overflow-hidden">
+          <section className="p-12 flex flex-col justify-between bg-gradient-to-br from-[#2A742F] to-[#04AF43] text-white">
+            <header className="space-y-4">
               <h1 className="text-4xl font-bold flex items-center gap-3">
                 <img
                   src={smallLogo}
@@ -96,30 +98,30 @@ const CreateProfile = () => {
                 Join thousands of Muslim students benefitting from a unified
                 ecosystem for Da'wah and Academics every day.
               </p>
-            </div>
+            </header>
 
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 space-y-4">
-              <div className="flex items-start gap-4">
+            <section className="bg-white/10 backdrop-blur-sm rounded-xl p-6 space-y-4">
+              <figure className="flex items-start gap-4">
                 <img
                   src={sideImage}
                   alt="user"
                   className="h-12 w-12 rounded-full object-cover"
                 />
-                <div className="flex-1">
+                <figcaption className="flex-1">
                   <h3 className="font-semibold text-lg">Abdulwarith Salman</h3>
                   <p className="text-sm text-white/80">
                     Product Manager at Pythagoras
                   </p>
-                </div>
-              </div>
+                </figcaption>
+              </figure>
               <p className="text-white/90 text-sm leading-relaxed italic">
                 "Pythagoras has completely transformed how our team
                 collaborates. Intuitive interface and powerful features make
                 complex projects feel effortless."
               </p>
-            </div>
+            </section>
 
-            <div className="grid grid-cols-3 gap-6 pt-8 border-t border-white/20">
+            <section className="grid grid-cols-3 gap-6 pt-8 border-t border-white/20">
               <div>
                 <div className="text-3xl font-bold">50K+</div>
                 <div className="text-sm text-white/80">Active Users</div>
@@ -132,21 +134,21 @@ const CreateProfile = () => {
                 <div className="text-3xl font-bold">24/7</div>
                 <div className="text-sm text-white/80">Support</div>
               </div>
-            </div>
-          </div>
+            </section>
+          </section>
 
-          <div className="flex items-start justify-center p-8 bg-white">
+          <section className="flex items-start justify-center p-8 bg-white">
             <div className="w-full max-w-md">
-              <div className="space-y-1 mb-5">
+              <header className="space-y-1 mb-5">
                 <h2 className="text-2xl font-semibold text-[#000]">
                   Create Profile
                 </h2>
                 <p className="text-sm text-[#4B5563]">
                   Complete your profile to get started
                 </p>
-              </div>
+              </header>
 
-              <div className="flex justify-center mb-5">
+              <figure className="flex justify-center mb-5">
                 <div className="relative">
                   {profileImage ? (
                     <div className="relative">
@@ -174,9 +176,9 @@ const CreateProfile = () => {
                     </label>
                   )}
                 </div>
-              </div>
+              </figure>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <section className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <input
                   type="text"
                   name="firstName"
@@ -243,9 +245,9 @@ const CreateProfile = () => {
                   <option value="medicine">Medicine</option>
                   <option value="law">Law</option>
                 </select>
-              </div>
+              </section>
 
-              <div className="space-y-2 mt-3">
+              <section className="space-y-2 mt-3">
                 <label className="text-sm font-medium text-[#4B5563]">
                   School Fees Receipt
                 </label>
@@ -275,7 +277,7 @@ const CreateProfile = () => {
                     className="hidden"
                   />
                 </label>
-              </div>
+              </section>
 
               <button
                 onClick={handleSubmit}
@@ -285,23 +287,23 @@ const CreateProfile = () => {
                 {loading ? "Creating Profile..." : "Continue"}
               </button>
             </div>
-          </div>
-        </div>
-      </div>
+          </section>
+        </section>
+      </aside>
 
-      <div className="lg:hidden relative z-10 w-full min-h-screen flex items-center justify-center px-4 py-10 bg-white">
+      <section className="lg:hidden relative z-10 w-full min-h-screen flex items-center justify-center px-4 py-10 bg-white">
         <div className="w-full max-w-md space-y-5">
           {/* Mobile Title */}
-          <div className="space-y-1 text-center">
+          <header className="space-y-1 text-center">
             <h2 className="text-2xl font-semibold text-[#000]">
               Create Profile
             </h2>
             <p className="text-sm text-[#4B5563]">
               Complete your profile to get started
             </p>
-          </div>
+          </header>
 
-          <div className="flex justify-center mb-5">
+          <figure className="flex justify-center mb-5">
             <div className="relative">
               {profileImage ? (
                 <div className="relative">
@@ -329,9 +331,9 @@ const CreateProfile = () => {
                 </label>
               )}
             </div>
-          </div>
+          </figure>
 
-          <div className="grid grid-cols-1 gap-3">
+          <section className="grid grid-cols-1 gap-3">
             <input
               type="text"
               name="firstName"
@@ -398,9 +400,9 @@ const CreateProfile = () => {
               <option value="medicine">Medicine</option>
               <option value="law">Law</option>
             </select>
-          </div>
+          </section>
 
-          <div className="space-y-2 mt-3">
+          <section className="space-y-2 mt-3">
             <label className="text-sm font-medium text-[#4B5563]">
               School Fees Receipt
             </label>
@@ -428,7 +430,7 @@ const CreateProfile = () => {
                 className="hidden"
               />
             </label>
-          </div>
+          </section>
 
           <button
             onClick={handleSubmit}
@@ -438,8 +440,8 @@ const CreateProfile = () => {
             {loading ? "Creating Profile..." : "Continue"}
           </button>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 };
 

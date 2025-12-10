@@ -3,7 +3,6 @@ import bgImage from "/src/assets/imageOne.jpg";
 import smallLogo from "/src/assets/imageOne.jpg";
 import sideImage from "/src/assets/imageTen.png";
 
-
 const Register = () => {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -20,16 +19,16 @@ const Register = () => {
   };
 
   return (
-    <div
+    <main
       className="min-h-screen w-full bg-cover bg-center relative"
       style={{ backgroundImage: `url(${bgImage})` }}
     >
       <div className="absolute inset-0 bg-black/20 backdrop-blur-sm"></div>
 
-      <div className="hidden lg:flex relative z-10 min-h-screen items-center justify-center px-10">
+      <section className="hidden lg:flex relative z-10 min-h-screen items-center justify-center px-10">
         <div className="w-full max-w-6xl bg-white/95 shadow-2xl rounded-2xl grid grid-cols-2 overflow-hidden border border-gray-200">
-          <div className="p-12 flex flex-col justify-between bg-gradient-to-br from-[#2A742F] to-[#04AF43] text-white">
-            <div className="space-y-4">
+          <aside className="p-12 flex flex-col justify-between bg-gradient-to-br from-[#2A742F] to-[#04AF43] text-white">
+            <header className="space-y-4">
               <h1 className="text-4xl font-bold flex items-center gap-3">
                 <img
                   src={smallLogo}
@@ -47,7 +46,7 @@ const Register = () => {
                 Join thousands of Muslim students benefitting from a unified
                 ecosystem for Da'wah and Academics everyday.
               </p>
-            </div>
+            </header>
 
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 space-y-4">
               <div className="flex items-start gap-4">
@@ -84,10 +83,10 @@ const Register = () => {
                 <div className="text-sm text-white/80">Support</div>
               </div>
             </div>
-          </div>
+          </aside>
 
           <div className="flex items-center justify-center p-12 bg-white">
-            <div className="w-full max-w-md space-y-6">
+            <section className="w-full max-w-md space-y-6">
               <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
                 <button className="flex-1 py-2 px-4 rounded-md text-sm font-medium text-[#4B5563] hover:bg-white transition-all">
                   Sign In
@@ -198,7 +197,7 @@ const Register = () => {
                 </a>
               </p>
 
-              <p className="text-center text-xs text-[#4B5563] leading-relaxed">
+              <footer className="text-center text-xs text-[#4B5563] leading-relaxed">
                 By continuing you agree to our{" "}
                 <a className="text-[#2A742F] hover:underline transition-all cursor-pointer">
                   Terms & Conditions
@@ -208,11 +207,11 @@ const Register = () => {
                   Privacy Policy
                 </a>
                 .
-              </p>
-            </div>
+              </footer>
+            </section>
           </div>
         </div>
-      </div>
+      </section>
 
       <div className="lg:hidden relative z-10 w-full min-h-screen px-4 flex items-center justify-center">
         <div className="w-full max-w-md bg-white rounded-xl shadow-lg p-8 space-y-6">
@@ -287,14 +286,14 @@ const Register = () => {
             </a>
           </p>
 
-          <p className="text-center text-xs text-[#4B5563] leading-relaxed">
+          <footer className="text-center text-xs text-[#4B5563] leading-relaxed">
             By continuing you agree to our{" "}
             <a className="text-[#2A742F]">Terms & Conditions</a> and{" "}
             <a className="text-[#2A742F]">Privacy Policy</a>.
-          </p>
+          </footer>
         </div>
       </div>
-    </div>
+    </main>
   );
 };
 

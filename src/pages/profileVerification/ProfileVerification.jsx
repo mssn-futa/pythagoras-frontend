@@ -2,9 +2,9 @@ import React from "react";
 import smallLogo from "/src/assets/imageOne.jpg";
 import sideImage from "/src/assets/imageTen.png";
 
-const AcctActivation = () => {
+const ProfileVerification = () => {
   return (
-    <div
+    <main
       className="
         min-h-screen w-full relative 
         bg-white
@@ -14,10 +14,10 @@ const AcctActivation = () => {
     >
       <div className="absolute inset-0 bg-black/20 backdrop-blur-sm"></div>
 
-      <div className="hidden lg:flex relative z-10 min-h-screen items-center justify-center px-10">
+      <section className="hidden lg:flex relative z-10 min-h-screen items-center justify-center px-10">
         <div className="w-full max-w-6xl bg-white/95 shadow-2xl rounded-2xl grid grid-cols-2 overflow-hidden border border-gray-200">
-          <div className="p-12 flex flex-col justify-between bg-gradient-to-br from-[#2A742F] to-[#04AF43] text-white">
-            <div className="space-y-4">
+          <section className="p-12 flex flex-col justify-between bg-gradient-to-br from-[#2A742F] to-[#04AF43] text-white">
+            <header className="space-y-4">
               <h1 className="text-4xl font-bold flex items-center gap-3">
                 <img
                   src={smallLogo}
@@ -26,18 +26,16 @@ const AcctActivation = () => {
                 />
                 Pythagoras
               </h1>
-
               <h2 className="text-xl font-semibold leading-relaxed">
                 Welcome back to the central hub of productivity
               </h2>
-
               <p className="text-white/90 text-base">
                 Join thousands of Muslim students benefitting from a unified
-                ecosystem for Da'wah and Academics everyday.
+                ecosystem for Da'wah and Academics every day.
               </p>
-            </div>
+            </header>
 
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 space-y-4 mt-5">
+            <article className="bg-white/10 backdrop-blur-sm rounded-xl p-6 space-y-4 mt-5">
               <div className="flex items-start gap-4">
                 <img
                   src={sideImage}
@@ -51,15 +49,14 @@ const AcctActivation = () => {
                   </p>
                 </div>
               </div>
-
               <p className="text-white/90 text-sm italic leading-relaxed">
                 "Pythagoras has completely transformed how our team
                 collaborates. Intuitive interface and powerful features make
                 complex projects feel effortless."
               </p>
-            </div>
+            </article>
 
-            <div className="grid grid-cols-3 gap-6 pt-8 border-t border-white/20">
+            <footer className="grid grid-cols-3 gap-6 pt-8 border-t border-white/20">
               <div>
                 <div className="text-3xl font-bold">50K+</div>
                 <div className="text-sm text-white/80">Active Users</div>
@@ -72,11 +69,11 @@ const AcctActivation = () => {
                 <div className="text-3xl font-bold">24/7</div>
                 <div className="text-sm text-white/80">Support</div>
               </div>
-            </div>
-          </div>
+            </footer>
+          </section>
 
-          <div className="flex items-center justify-center p-12 bg-white">
-            <div className="w-full max-w-md space-y-8 text-center">
+          <section className="flex items-center justify-center p-12 bg-white">
+            <article className="w-full max-w-md space-y-8 text-center">
               <div className="flex justify-center">
                 <div className="w-20 h-20 rounded-full bg-[#2A742F]/20 flex items-center justify-center">
                   <svg
@@ -96,26 +93,25 @@ const AcctActivation = () => {
               </div>
 
               <h2 className="text-3xl font-semibold text-[#000]">
-                Account Activated!
+                Profile Verified!
               </h2>
 
               <p className="text-[#4B5563] text-sm leading-relaxed max-w-sm mx-auto">
-                Your account has been successfully activated. We’ll now ask you
-                for information such as your name and matric number to verify
-                your identity. You will also need to upload your school fees
-                receipt.
+                Your profile has been successfully verified. You can now proceed
+                to access all features of the platform, complete additional
+                details if needed, or upload any remaining documents.
               </p>
 
-              <button className="w-full py-3 rounded-lg text-white font-medium bg-gradient-to-r from-[#2A742F] to-[#04AF43] hover:shadow-lg hover:scale-[1.02] transition-all">
+              <button className="w-full py-3 rounded-lg text-white font-medium bg-gradient-to-r from-[#2A742F] to-[#04AF43] hover:shadow-lg cursor-pointer hover:scale-[1.02] transition-all">
                 Continue
               </button>
-            </div>
-          </div>
+            </article>
+          </section>
         </div>
-      </div>
+      </section>
 
-      <div className="lg:hidden relative z-10 min-h-screen w-full flex flex-col justify-between px-4 py-10">
-        <div className="flex-1 flex flex-col justify-center space-y-10 max-w-md mx-auto">
+      <section className="lg:hidden relative z-10 min-h-screen w-full flex flex-col justify-between px-4 py-10">
+        <article className="flex-1 flex flex-col justify-center space-y-10 max-w-md mx-auto">
           <div className="flex justify-center">
             <div className="w-20 h-20 rounded-full bg-[#2A742F]/20 flex items-center justify-center">
               <svg
@@ -135,20 +131,21 @@ const AcctActivation = () => {
           </div>
 
           <h2 className="text-3xl font-semibold text-center text-[#2A742F]">
-            Account Activated!
+            Profile Verified!
           </h2>
 
           <p className="text-center text-sm text-[#2A742F]/90 leading-relaxed">
-            Your account has been successfully activated. Please continue to
-            complete your profile and upload any required documents.
+            Your profile has been successfully verified. You can now continue to
+            complete additional details or upload any remaining documents.
           </p>
-        </div>
+        </article>
+
         <button className="w-full max-w-md mx-auto py-3 rounded-lg text-white font-medium bg-gradient-to-r from-[#2A742F] to-[#04AF43] hover:shadow-lg transition-all">
           Continue
         </button>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 };
 
-export default AcctActivation;
+export default ProfileVerification;
