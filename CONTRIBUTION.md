@@ -40,15 +40,14 @@ Ensure you have the following installed:
 
 ### 2. Setup
 
-1. **Fork** the frontend repository to your GitHub account.  
-2. **Clone** your fork:
+1. **Clone** the repository:
 
-```nginx
-git clone [https://github.com/mssn-futa/pythagoras-frontend.git](https://github.com/mssn-futa/pythagoras-frontend.git)
+```bash
+git clone https://github.com/mssn-futa/pythagoras-frontend.git
 cd pythagoras-frontend
 ```
 
-3. **Install Dependencies**:
+2. **Install Dependencies**:
 
 ```nginx
 npm install
@@ -82,14 +81,42 @@ We follow a strict **Feature Branch Workflow**.
 
 ### **Step 2: Create a Branch**
 
-Naming Convention: `type/feature-name`
+**Important:** Always create your branch from the latest `dev` branch.
+
+1. **Fetch all branches** from the remote:
+
+```bash
+git fetch
+```
+
+2. **Checkout to the dev branch**:
+
+```bash
+git checkout dev
+```
+
+3. **Pull the latest changes** to ensure you have the most up-to-date code:
+
+```bash
+git pull
+```
+
+4. **Create your new branch**:
+
+```bash
+git branch -m feat/login-form-ui
+```
+
+5. **Switch to your new branch**:
+
+```bash
+git checkout feat/login-form-ui
+```
+
+**Branch Naming Convention:** `type/feature-name`
 
 * **Types:** feat (new UI/logic), fix (bug fix), style (Tailwind tweaks), refactor.  
 * **Example:** `feat/login-form-ui`, `fix/audio-player`
-
-```nginx
-git checkout -b feat/login-form-ui
-```
 
 ### **Step 3: Code & Commit**
 
@@ -98,9 +125,17 @@ git checkout -b feat/login-form-ui
 
 ### **Step 4: Pull Request (PR)**
 
-1. Push to your fork: `git push origin feat/login-form-ui` 
-2. Open a PR to the `dev` branch.  
-3. **Self-Review:** 
+1. **Push your branch** to the repository:
+
+```bash
+git push origin feat/login-form-ui
+```
+
+2. **Open a Pull Request** on GitHub:
+   * Set **base** to `dev` (the branch you're merging into)
+   * Set **compare** to your branch name (e.g., `feat/login-form-ui`)
+
+3. **Self-Review** before requesting a review:
     - Did you remove `console.log`? 
     - Does it look good on mobile? 
     - Is it working as described on Clickup? 
