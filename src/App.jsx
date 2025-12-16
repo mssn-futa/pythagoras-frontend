@@ -6,6 +6,7 @@ import VerificationCode from "./pages/verificationCode/VerificationCode";
 import AccountActivation from "./pages/accountActivation/AccountActivation";
 import CreateProfile from "./pages/createProfile/CreateProfile";
 import ProfileVerification from "./pages/profileVerification/ProfileVerification";
+import Login from "./pages/login/Login";
 
 const App = () => {
   return (
@@ -13,6 +14,7 @@ const App = () => {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/sign-up" element={<Register />} />
+        <Route path="/sign-in" element={<Login />} />
         <Route path="/verification-code" element={<VerificationCode />} />
         <Route path="/account-activation" element={<AccountActivation />} />
         <Route path="/create-profile" element={<CreateProfile />} />

@@ -4,15 +4,18 @@ import smallLogo from "/src/assets/imageOne.jpg";
 import sideImage from "/src/assets/imageTen.png";
 import { Link } from "react-router-dom";
 
-const Register = () => {
+
+const Login = () => {
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const isValidEmail = (value) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
   };
 
-  const handleContinue = () => {
+  const handleLogin = () => {
     setLoading(true);
     setTimeout(() => {
       setLoading(false);
@@ -90,12 +93,12 @@ const Register = () => {
             <section className="w-full max-w-md space-y-6">
               <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
                 <Link to="/sign-in" className="flex-1">
-                  <button className="w-full py-2 px-4 rounded-md text-sm font-medium text-[#4B5563] hover:bg-white transition-all">
+                  <button className="w-full py-2 px-4 rounded-md text-sm font-medium bg-gradient-to-r from-[#2A742F] to-[#04AF43] text-white shadow-sm">
                     Sign In
                   </button>
                 </Link>
                 <Link to="/sign-up" className="flex-1">
-                  <button className="w-full py-2 px-4 rounded-md text-sm font-medium bg-gradient-to-r from-[#2A742F] to-[#04AF43] text-white shadow-sm">
+                  <button className="w-full py-2 px-4 rounded-md text-sm font-medium text-[#4B5563] hover:bg-white transition-all">
                     Sign Up
                   </button>
                 </Link>
@@ -103,24 +106,93 @@ const Register = () => {
 
               <div className="space-y-1">
                 <h2 className="text-2xl font-semibold text-[#000000]">
-                  Create your account with Pythagoras
+                  Welcome back to Pythagoras
                 </h2>
                 <p className="text-sm text-[#4B5563]">
-                  Enter your email to continue
+                  Enter your credentials to continue
                 </p>
               </div>
 
-              <input
-                type="email"
-                placeholder="Enter your email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-[#2A742F] focus:border-[#2A742F] focus:outline-none transition-all"
-              />
+              <div className="space-y-4">
+                <input
+                  type="email"
+                  placeholder="Enter your email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-[#2A742F] focus:border-[#2A742F] focus:outline-none transition-all"
+                />
+
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-[#2A742F] focus:border-[#2A742F] focus:outline-none transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#4B5563] hover:text-[#2A742F] transition-all"
+                  >
+                    {showPassword ? (
+                      <svg
+                        className="h-5 w-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+                        />
+                      </svg>
+                    ) : (
+                      <svg
+                        className="h-5 w-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                        />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                        />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 text-[#2A742F] focus:ring-[#2A742F]"
+                  />
+                  <span className="text-sm text-[#4B5563]">Remember me</span>
+                </label>
+                <a
+                  href="/forgot-password"
+                  className="text-sm text-[#2A742F] font-medium hover:underline transition-all"
+                >
+                  Forgot password?
+                </a>
+              </div>
 
               <button
-                onClick={handleContinue}
-                disabled={loading || !isValidEmail(email)}
+                onClick={handleLogin}
+                disabled={loading || !isValidEmail(email) || !password}
                 className="w-full py-3 rounded-lg text-white font-medium bg-gradient-to-r from-[#2A742F] to-[#04AF43] hover:shadow-lg hover:scale-[1.02] transition-all disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2"
               >
                 {loading ? (
@@ -148,7 +220,7 @@ const Register = () => {
                     <span>Loading...</span>
                   </>
                 ) : (
-                  "Continue"
+                  "Login"
                 )}
               </button>
 
@@ -193,13 +265,13 @@ const Register = () => {
               </div>
 
               <p className="text-center text-sm text-[#4B5563]">
-                Already have an account?{" "}
-                <Link
-                  to="/sign-in"
+                Don't have an account?{" "}
+                <a
+                  href="/register"
                   className="text-[#2A742F] font-medium hover:underline transition-all"
                 >
-                  Login
-                </Link>
+                  Sign Up
+                </a>
               </p>
 
               <footer className="text-center text-xs text-[#4B5563] leading-relaxed">
@@ -231,24 +303,93 @@ const Register = () => {
 
           <div className="space-y-1">
             <h2 className="text-xl font-semibold text-[#000000]">
-              Create your account with Pythagoras
+              Welcome back to Pythagoras
             </h2>
             <p className="text-sm text-[#4B5563]">
-              Enter your email to continue
+              Enter your credentials to continue
             </p>
           </div>
 
-          <input
-            type="email"
-            placeholder="Enter your email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-[#2A742F] focus:outline-none"
-          />
+          <div className="space-y-4">
+            <input
+              type="email"
+              placeholder="Enter your email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-[#2A742F] focus:outline-none"
+            />
+
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                placeholder="Enter your password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-[#2A742F] focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#4B5563]"
+              >
+                {showPassword ? (
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+                    />
+                  </svg>
+                ) : (
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                    />
+                  </svg>
+                )}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-gray-300 text-[#2A742F] focus:ring-[#2A742F]"
+              />
+              <span className="text-sm text-[#4B5563]">Remember me</span>
+            </label>
+            <a
+              href="/forgot-password"
+              className="text-sm text-[#2A742F] font-medium"
+            >
+              Forgot?
+            </a>
+          </div>
 
           <button
-            onClick={handleContinue}
-            disabled={loading || !isValidEmail(email)}
+            onClick={handleLogin}
+            disabled={loading || !isValidEmail(email) || !password}
             className="w-full py-3 rounded-lg text-white font-medium bg-gradient-to-r from-[#2A742F] to-[#04AF43] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {loading ? (
@@ -276,7 +417,7 @@ const Register = () => {
                 <span>Loading...</span>
               </>
             ) : (
-              "Continue"
+              "Login"
             )}
           </button>
 
@@ -317,10 +458,10 @@ const Register = () => {
           </div>
 
           <p className="text-center text-sm text-[#4B5563]">
-            Already have an account?{" "}
-            <Link to="/sign-in" className="text-[#2A742F] font-medium">
-              Login
-            </Link>
+            Don't have an account?{" "}
+            <a href="/register" className="text-[#2A742F] font-medium">
+              Sign Up
+            </a>
           </p>
 
           <footer className="text-center text-xs text-[#4B5563] leading-relaxed">
@@ -334,4 +475,4 @@ const Register = () => {
   );
 };
 
-export default Register;
+export default Login;
