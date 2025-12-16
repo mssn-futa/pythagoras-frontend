@@ -4,7 +4,6 @@ import smallLogo from "/src/assets/imageOne.jpg";
 import sideImage from "/src/assets/imageTen.png";
 import { Link } from "react-router-dom";
 
-
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -459,9 +458,9 @@ const Login = () => {
 
           <p className="text-center text-sm text-[#4B5563]">
             Don't have an account?{" "}
-            <a href="/register" className="text-[#2A742F] font-medium">
+            <Link to="/sign-up" className="text-[#2A742F] font-medium">
               Sign Up
-            </a>
+            </Link>
           </p>
 
           <footer className="text-center text-xs text-[#4B5563] leading-relaxed">
