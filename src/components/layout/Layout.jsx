@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import SideBar from "./SideBar";
 import NavBar from "./NavBar";
 
-
 export default function Layout({ children }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
@@ -50,14 +49,18 @@ export default function Layout({ children }) {
 
       {/* Main Screen */}
       <div className="flex-1 flex flex-col md:ml-[270px]">
-        <NavBar
-          toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-          darkMode={darkMode}
-          handleThemeToggle={handleThemeToggle}
-        />
+        
+        {/* FIXED NAVBAR */}
+        <div className="fixed top-0 left-0 right-0 md:left-[270px] z-40">
+          <NavBar
+            toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+            darkMode={darkMode}
+            handleThemeToggle={handleThemeToggle}
+          />
+        </div>
 
-        {/* Content Area */}
-        <main className="flex-1 p-4 md:p-6">
+        {/* CONTENT — pushed down below navbar */}
+        <main className="flex-1 p-4 md:p-6 pt-20">
           {children}
         </main>
       </div>
