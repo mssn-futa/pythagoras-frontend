@@ -111,21 +111,21 @@ const Dawah = () => {
           <div className="lg:col-span-2 space-y-6">
             <article className="bg-gradient-to-r from-[#C002C0] to-[#FF31FF] rounded-2xl p-8 text-white relative overflow-hidden">
               <div className="relative z-10">
-                <h1 className="text-3xl font-bold mb-3 flex items-center gap-2">
+                <h1 className="text-2xl font-bold mb-3 flex items-center gap-2">
                   Campus Da'wah Hub
-                  <span className="text-4xl"></span>
+                  <span className="text-2xl"></span>
                 </h1>
-                <p className="text-white/90 text-lg">
+                <p className="text-white/90 text-1xl">
                   Today, knowledge is a light, and Allah grants it to those whom
                   He loves...
                 </p>
               </div>
               <div className="absolute right-0 top-0 opacity-10">
-                <FontAwesomeIcon icon={faMosque} className="text-[200px]" />
+                <FontAwesomeIcon icon={faMosque} className="text-[150px]" />
               </div>
             </article>
 
-            <section className="bg-white dark:bg-gray-800 rounded-xl p-6">
+            <section className="bg-white dark:bg-gray-800 rounded-xl p-5">
               <header className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-gray-800 dark:text-white">
                   Past Lectures
@@ -206,14 +206,10 @@ const Dawah = () => {
                             <FontAwesomeIcon icon={faDownload} />
                             Download
                           </button>
-                          <button className="flex items-center gap-2 px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg text-sm hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors">
-                            <FontAwesomeIcon icon={faArchive} />
-                            Archive
-                          </button>
                         </div>
                       </div>
                       <button className="text-[#FF31FF] hover:text-[#C002C0] transition-colors ml-4">
-                        <FontAwesomeIcon icon={faPlay} size="2x" />
+                        <FontAwesomeIcon icon={faPlay} size="1x" />
                       </button>
                     </div>
                   </article>
@@ -380,14 +376,10 @@ const Dawah = () => {
                           <FontAwesomeIcon icon={faDownload} />
                           Download
                         </button>
-                        <button className="flex items-center gap-2 px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors">
-                          <FontAwesomeIcon icon={faArchive} />
-                          Archive
-                        </button>
                       </div>
                     </div>
                     <button className="text-[#FF31FF] hover:text-[#C002C0] transition-colors ml-4">
-                      <FontAwesomeIcon icon={faPlay} size="3x" />
+                      <FontAwesomeIcon icon={faPlay} size="1x" />
                     </button>
                   </div>
                 </article>
