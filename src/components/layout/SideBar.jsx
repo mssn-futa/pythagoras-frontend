@@ -1,3 +1,4 @@
+import { NavLink } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faHome, faBook, faBriefcase, faUser, faMosque } from "@fortawesome/free-solid-svg-icons";
 import logo from "../../assets/logo.png";
@@ -10,7 +11,6 @@ const SideBar = ({ isOpen, toggleSidebar }) => {
         p-5 flex flex-col transition-transform duration-300 z-40
         ${isOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
     >
-      {/* Brand */}
       <div className="flex items-center gap-3 mb-10">
         <img src={logo} alt="Logo" className="h-12" />
         <div>
@@ -19,16 +19,49 @@ const SideBar = ({ isOpen, toggleSidebar }) => {
         </div>
       </div>
 
-      {/* Navigation Links */}
       <nav className="flex flex-col gap-4 flex-1">
-        <SideBarLink icon={faHome} label="Home" to="/" hoverFrom="#2A742F" hoverTo="#04AF43" />
-        <SideBarLink icon={faMosque} label="Dawah" to="/dawah" hoverFrom="#C002C0" hoverTo="#FF31FF" />
-        <SideBarLink icon={faBook} label="Academics" to="/academics" hoverFrom="#0284C7" hoverTo="#0EA5E9" />
-        <SideBarLink icon={faBriefcase} label="Empowerment Hub" to="/empowerment" hoverFrom="#FFB300" hoverTo="#EAB308" />
-        <SideBarLink icon={faUser} label="Profile" to="/profile" hoverFrom="#2D2D2D" hoverTo="#949292" />
+        <SideBarLink 
+          icon={faHome} 
+          label="Home" 
+          to="/" 
+          hoverFrom="#2A742F" 
+          hoverTo="#04AF43"
+          onClick={toggleSidebar}
+        />
+        <SideBarLink 
+          icon={faMosque} 
+          label="Dawah" 
+          to="/dawah" 
+          hoverFrom="#C002C0" 
+          hoverTo="#FF31FF"
+          onClick={toggleSidebar}
+        />
+        <SideBarLink 
+          icon={faBook} 
+          label="Academics" 
+          to="/academics" 
+          hoverFrom="#0284C7" 
+          hoverTo="#0EA5E9"
+          onClick={toggleSidebar}
+        />
+        <SideBarLink 
+          icon={faBriefcase} 
+          label="Empowerment Hub" 
+          to="/empowerment" 
+          hoverFrom="#FFB300" 
+          hoverTo="#EAB308"
+          onClick={toggleSidebar}
+        />
+        <SideBarLink 
+          icon={faUser} 
+          label="Profile" 
+          to="/profile" 
+          hoverFrom="#2D2D2D" 
+          hoverTo="#949292"
+          onClick={toggleSidebar}
+        />
       </nav>
 
-      {/* Profile */}
       <div className="mt-auto flex items-center gap-3 pt-6">
         <img src={profilePic} alt="Profile" className="h-10 w-10 rounded-full" />
         <div>
@@ -40,25 +73,47 @@ const SideBar = ({ isOpen, toggleSidebar }) => {
   );
 };
 
-const SideBarLink = ({ icon, label, to, hoverFrom, hoverTo }) => (
-  <a
-    href={to}
-    className="group flex items-center gap-3 p-2 rounded-lg transition-all duration-300 relative overflow-hidden"
+const SideBarLink = ({ icon, label, to, hoverFrom, hoverTo, onClick }) => (
+  <NavLink
+    to={to}
+    end={to === "/"}
+    onClick={onClick}
+    className={({ isActive }) =>
+      `group flex items-center gap-3 p-2 rounded-lg transition-all duration-300 relative overflow-hidden ${
+        isActive ? "is-active" : ""
+      }`
+    }
     style={{ backgroundColor: "transparent" }}
   >
-    <div
-      className="absolute inset-0 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-      style={{ background: `linear-gradient(to right, ${hoverFrom}, ${hoverTo})`, zIndex: 0 }}
-    ></div>
-    
-    <FontAwesomeIcon
-      icon={icon}
-      className="text-[#4B5563] group-hover:text-white dark:text-white transition-colors duration-300 relative z-10"
-    />
-    <span className="text-[#4B5563] group-hover:text-white dark:text-white transition-colors duration-300 relative z-10">
-      {label}
-    </span>
-  </a>
+    {({ isActive }) => (
+      <>
+        <div
+          className={`absolute inset-0 rounded-lg transition-opacity duration-300 ${
+            isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          }`}
+          style={{ background: `linear-gradient(to right, ${hoverFrom}, ${hoverTo})`, zIndex: 0 }}
+        ></div>
+        
+        <FontAwesomeIcon
+          icon={icon}
+          className={`transition-colors duration-300 relative z-10 ${
+            isActive 
+              ? "text-white" 
+              : "text-[#4B5563] group-hover:text-white dark:text-white"
+          }`}
+        />
+        <span 
+          className={`transition-colors duration-300 relative z-10 ${
+            isActive 
+              ? "text-white font-medium" 
+              : "text-[#4B5563] group-hover:text-white dark:text-white"
+          }`}
+        >
+          {label}
+        </span>
+      </>
+    )}
+  </NavLink>
 );
 
 export default SideBar;
