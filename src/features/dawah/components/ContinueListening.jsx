@@ -1,5 +1,5 @@
 import eventOneImg from "../../../assets/eventOne.png";
-import eventTwoImg from "../../../assets/eventtwo.png";
+import eventTwoImg from "../../../assets/eventTwo.png";
 import eventThreeImg from "../../../assets/eventThree.png";
 import eventFourImg from "../../../assets/eventFour.png";
 
