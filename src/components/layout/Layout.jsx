@@ -3,11 +3,7 @@ import { Outlet } from "react-router-dom";
 import SideBar from "./SideBar";
 import NavBar from "./NavBar";
 
-<<<<<<< HEAD
-export default function Layout({ children }) {
-=======
 export default function Layout() {
->>>>>>> upstream/dev
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
 
@@ -59,14 +55,8 @@ export default function Layout() {
           />
         </div>
 
-<<<<<<< HEAD
-        {/* CONTENT — pushed down below navbar */}
-        <main className="flex-1 p-4 md:p-6 pt-20">
-          {children}
-=======
         <main className="flex-1 p-4 md:p-6">
           <Outlet />
->>>>>>> upstream/dev
         </main>
       </div>
     </div>
