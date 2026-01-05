@@ -57,7 +57,6 @@ const AdminLayout = () => {
         </section>
 
         <section className="flex items-center gap-3">
-          <Bell size={20} className="text-gray-600" />
           <span className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold">
             A
           </span>
@@ -105,10 +104,6 @@ const AdminLayout = () => {
       <section className="lg:ml-64">
         <header className="hidden lg:flex bg-white border-b border-gray-200 px-8 py-4 items-center justify-end sticky top-0 z-20">
           <section className="flex items-center gap-4">
-            <button className="p-2 hover:bg-gray-100 rounded-full relative">
-              <Bell size={20} className="text-gray-600" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-            </button>
 
             <section className="flex items-center gap-2 cursor-pointer hover:bg-gray-100 rounded-lg px-3 py-2">
               <span className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold">
