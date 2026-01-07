@@ -1,12 +1,45 @@
-function App() {
-  return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold text-gray-900 mb-4">Pythagoras</h1>
-        <p className="text-lg text-gray-600">Welcome to Pythagoras</p>
-      </div>
-    </div>
-  )
-}
+import React from "react";
+import { Route, Routes } from "react-router-dom";
+import Home from "./pages/home/Home";
+import Register from "./pages/register/Register";
+import VerificationCode from "./pages/verificationCode/VerificationCode";
+import AccountActivation from "./pages/accountActivation/AccountActivation";
+import CreateProfile from "./pages/createProfile/CreateProfile";
+import ProfileVerification from "./pages/profileVerification/ProfileVerification";
+import Login from "./pages/login/Login";
+import Layout from "./components/layout/Layout";
+import Dawah from "./pages/dawah/Dawah";
+import Academics from "./pages/academics/Academics";
+import Empowerment from "./pages/empowerment/Empowerment";
+import Profile from "./pages/profile/Profile";
+import AdminLayout from "./components/layout/AdminLayout";
+import AdminDashboard from "./pages/admin/AdminDashboard";
 
-export default App
+const App = () => {
+  return (
+    <>
+      <Routes>
+        <Route path="/sign-up" element={<Register />} />
+        <Route path="/sign-in" element={<Login />} />
+        <Route path="/verification-code" element={<VerificationCode />} />
+        <Route path="/account-activation" element={<AccountActivation />} />
+        <Route path="/create-profile" element={<CreateProfile />} />
+        <Route path="/profile-verified" element={<ProfileVerification />} />
+
+        <Route path="/" element={<Layout />}>
+          <Route index element={<Home />} />
+          <Route path="dawah" element={<Dawah />} />
+          <Route path="academics" element={<Academics />} />
+          <Route path="empowerment" element={<Empowerment />} />
+          <Route path="profile" element={<Profile />} />
+        </Route>
+
+        <Route path="/admin" element={<AdminLayout />}>
+          <Route index element={<AdminDashboard />} />
+        </Route>
+      </Routes>
+    </>
+  );
+};
+
+export default App;
