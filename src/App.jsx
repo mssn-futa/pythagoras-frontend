@@ -14,6 +14,7 @@ import Empowerment from "./pages/empowerment/Empowerment";
 import Profile from "./pages/profile/Profile";
 import AdminLayout from "./components/layout/AdminLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
+import StudentDashboard from './pages/admin/student/StudentDashboard';
 
 const App = () => {
   return (
@@ -36,6 +37,7 @@ const App = () => {
 
         <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<AdminDashboard />} />
+           <Route path="Students" element={<StudentDashboard />} />
         </Route>
       </Routes>
     </>
