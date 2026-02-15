@@ -12,6 +12,9 @@ import Dawah from "./pages/dawah/Dawah";
 import Academics from "./pages/academics/Academics";
 import Empowerment from "./pages/empowerment/Empowerment";
 import Profile from "./pages/profile/Profile";
+import AdminLayout from "./components/layout/AdminLayout";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import StudentDashboard from './pages/admin/student/StudentDashboard';
 import Homepage from "./pages/student/HomePage";
 
 const App = () => {
@@ -31,6 +34,11 @@ const App = () => {
           <Route path="academics" element={<Academics />} />
           <Route path="empowerment" element={<Empowerment />} />
           <Route path="profile" element={<Profile />} />
+        </Route>
+
+        <Route path="/admin" element={<AdminLayout />}>
+          <Route index element={<AdminDashboard />} />
+           <Route path="Students" element={<StudentDashboard />} />
         </Route>
       </Routes>
     </>
