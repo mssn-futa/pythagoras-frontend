@@ -12,6 +12,7 @@ import Dawah from "./pages/dawah/Dawah";
 import Academics from "./pages/academics/Academics";
 import Empowerment from "./pages/empowerment/Empowerment";
 import Profile from "./pages/profile/Profile";
+import Homepage from "./pages/student/HomePage";
 import AdminLayout from "./components/layout/AdminLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import StudentDashboard from "./pages/admin/student/StudentDashboard";
@@ -33,7 +34,7 @@ const App = () => {
         <Route path="/profile-verified" element={<ProfileVerification />} />
 
         <Route path="/" element={<Layout />}>
-          <Route index element={<Home />} />
+          <Route index element={<Homepage />} />
           <Route path="dawah" element={<Dawah />} />
           <Route path="academics" element={<Academics />} />
           <Route path="empowerment" element={<Empowerment />} />
