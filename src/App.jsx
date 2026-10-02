@@ -14,6 +14,12 @@ import Empowerment from "./pages/empowerment/Empowerment";
 import Profile from "./pages/profile/Profile";
 import AdminLayout from "./components/layout/AdminLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
+import StudentDashboard from "./pages/admin/student/StudentDashboard";
+import QuizLayout from "./components/layout/QuizLayout";
+import CreateQuiz from "./pages/admin/quizzes/CreateQuiz";
+import QuizResult from "./pages/admin/quizzes/QuizResult";
+import AllQuiz from "./pages/admin/quizzes/AllQuiz";
+import Student from "./pages/admin/quizzes/Student";
 
 const App = () => {
   return (
@@ -34,8 +40,20 @@ const App = () => {
           <Route path="profile" element={<Profile />} />
         </Route>
 
-        <Route path="/admin" element={<AdminLayout />}>
-          <Route index element={<AdminDashboard />} />
+        <Route path="/admin">
+          {/* Admin layout routes */}
+          <Route element={<AdminLayout />}>
+            <Route index element={<AdminDashboard />} />
+            <Route path="students" element={<StudentDashboard />} />
+          </Route>
+
+          {/* Quiz layout route */}
+          <Route path="quizzes" element={<QuizLayout />}>
+            <Route index element={<CreateQuiz />} />
+            <Route path="results" element={<QuizResult />} />
+            <Route path="all" element={<AllQuiz />} />
+            <Route path="students" element={<Student />} />
+          </Route>
         </Route>
       </Routes>
     </>
