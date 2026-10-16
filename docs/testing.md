@@ -146,8 +146,32 @@ dependencies.
 
 Local: macOS, Node 22.23.3/npm 10.9.9. Fresh `npm ci`, full behavior suite
 (4 tests), full browser suite (8 cases across two projects), both targeted
-commands above, and targeted ESLint passed. Final CI execution and controlled
-failure proof are recorded in the WP PR and completion handoff.
+commands above, and targeted ESLint passed. `npm run test:watch` completed its
+initial four tests, stayed in watch mode, and was terminated with SIGINT; the
+script uses explicit `--watch` so non-TTY use does not silently become one-shot.
+
+Controlled failure proof used two temporary, uncommitted files and the actual
+configured setup/fixtures:
+
+- `npm test -- tests/behavior/controlled-failure.test.js`: exit 1, two expected
+  failures (wrong assertion; a caught fetch to
+  `https://release-02-unhandled.invalid/` still failed the MSW teardown guard).
+- `npm run test:browser -- tests/browser/controlled-failure.spec.js --project=chromium-desktop`:
+  exit 1, two expected failures (wrong assertion; a caught external fetch still
+  failed the browser teardown guard). Screenshots/traces were generated.
+
+Both files were removed after the probes. To reproduce, temporarily add a test
+under the matching discovery path containing
+`expect('observed').toBe('deliberately wrong')`. For the network probe, behavior
+tests can await `fetch('https://release-02-unhandled.invalid/').catch(() => {})`;
+browser tests first navigate to the fixture and run that fetch in
+`page.evaluate`. Each must exit nonzero, even though the rejection is caught.
+Remove the temporary tests and rerun `npm run test:all` afterward.
+
+The first draft-PR [Actions run](https://github.com/mssn-futa/pythagoras-frontend/actions/runs/38956629253)
+executed all four jobs on Linux: build, behavior and browser passed; lint failed
+on the baseline inventory above. No all-green CI or completed WP acceptance is
+claimed. Follow-up documentation commits also run the full suite.
 
 RELEASE-02 exposes executable commands for PLAT-04, RELEASE-04 and RELEASE-06.
 Command availability is distinct from green baseline acceptance and from real
