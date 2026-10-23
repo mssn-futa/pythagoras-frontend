@@ -34,32 +34,32 @@ const PrayerTimes = () => {
     }
 
     function getUserLocation() {
-    if (navigator.geolocation) {
-      setLoading(true);
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          try {
-            const { latitude, longitude } = position.coords;
-            const times = await islamicApi.getPrayerTimesByCoordinates(latitude, longitude);
-            setPrayerTimes(times);
-            setError(null);
-          } catch (err) {
-            setError('Failed to load prayer times for your location');
-            console.error(err);
-          } finally {
-            setLoading(false);
+      if (navigator.geolocation) {
+        setLoading(true);
+        navigator.geolocation.getCurrentPosition(
+          async (position) => {
+            try {
+              const { latitude, longitude } = position.coords;
+              const times = await islamicApi.getPrayerTimesByCoordinates(latitude, longitude);
+              setPrayerTimes(times);
+              setError(null);
+            } catch (err) {
+              setError('Failed to load prayer times for your location');
+              console.error(err);
+            } finally {
+              setLoading(false);
+            }
+          },
+          () => {
+            setError('Location access denied. Using default location.');
+            setUseGeolocation(false);
+            fetchPrayerTimes();
           }
-        },
-        () => {
-          setError('Location access denied. Using default location.');
-          setUseGeolocation(false);
-          fetchPrayerTimes();
-        }
-      );
-    } else {
-      setError('Geolocation not supported');
-      fetchPrayerTimes();
-    }
+        );
+      } else {
+        setError('Geolocation not supported');
+        fetchPrayerTimes();
+      }
     }
   }, [useGeolocation, fetchPrayerTimes]);
 
