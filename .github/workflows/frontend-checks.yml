@@ -1,0 +1,56 @@
+name: Frontend checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: ${{ matrix.check }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [build, lint, behavior, browser]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Production build
+        if: matrix.check == 'build'
+        run: npm run build
+      - name: Repository lint
+        if: matrix.check == 'lint'
+        run: npm run lint
+      - name: Full behavior suite
+        if: matrix.check == 'behavior'
+        run: npm test
+      - name: Install Chromium and system dependencies
+        if: matrix.check == 'browser'
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Full browser suite
+        if: matrix.check == 'browser'
+        run: npm run test:browser
+      - name: Retain browser failure evidence
+        if: failure() && matrix.check == 'browser'
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-failure-evidence
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

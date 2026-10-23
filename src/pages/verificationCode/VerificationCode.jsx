@@ -1,5 +1,4 @@
-import React, { useState, useRef } from "react";
-import bgImage from "/src/assets/imageOne.jpg";
+import React, { useState } from "react";
 import smallLogo from "/src/assets/imageOne.jpg";
 import sideImage from "/src/assets/imageTen.png";
 
@@ -8,10 +7,7 @@ const VerificationCode = () => {
   const [loading, setLoading] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(null);
 
-  const inputRefs = useRef([]);
-  if (inputRefs.current.length === 0) {
-    for (let i = 0; i < 4; i++) inputRefs.current.push(React.createRef());
-  }
+  const [inputRefs] = useState(() => Array.from({ length: 4 }, () => React.createRef()));
 
   const handleChange = (index, value) => {
     if (!/^[0-9]?$/.test(value)) return;
@@ -19,12 +15,12 @@ const VerificationCode = () => {
     newCode[index] = value;
     setCode(newCode);
 
-    if (value && index < 3) inputRefs.current[index + 1].current.focus();
+    if (value && index < 3) inputRefs[index + 1].current.focus();
   };
 
   const handleKeyDown = (index, e) => {
     if (e.key === "Backspace" && !code[index] && index > 0) {
-      inputRefs.current[index - 1].current.focus();
+      inputRefs[index - 1].current.focus();
     }
   };
 
@@ -33,7 +29,7 @@ const VerificationCode = () => {
     if (!/^\d{4}$/.test(paste)) return;
     const digits = paste.split("");
     setCode(digits);
-    inputRefs.current[3].current.focus();
+    inputRefs[3].current.focus();
   };
 
   const handleVerify = () => {
@@ -162,7 +158,7 @@ const VerificationCode = () => {
                     return (
                       <input
                         key={index}
-                        ref={inputRefs.current[index]}
+                        ref={inputRefs[index]}
                         type="text"
                         inputMode="numeric"
                         maxLength="1"
@@ -273,7 +269,7 @@ const VerificationCode = () => {
                 return (
                   <input
                     key={index}
-                    ref={inputRefs.current[index]}
+                    ref={inputRefs[index]}
                     type="text"
                     inputMode="numeric"
                     maxLength="1"

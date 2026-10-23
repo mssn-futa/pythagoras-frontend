@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import bookImg from "../../../assets/book.png";
 import cupImg from "../../../assets/cup.png";
 import starImg from "../../../assets/star.png";
@@ -34,15 +33,13 @@ const progressStats = [
 
 export default function ProgressOverview() {
   const today = new Date();
+  const year = today.getFullYear();
+  const month = today.getMonth();
 
-  const calendarData = useMemo(() => {
-    const year = today.getFullYear();
-    const month = today.getMonth();
-    const firstDay = new Date(year, month, 1).getDay();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-    return { firstDay, daysInMonth };
-  }, [today]);
+  const calendarData = {
+    firstDay: new Date(year, month, 1).getDay(),
+    daysInMonth: new Date(year, month + 1, 0).getDate(),
+  };
 
   return (
     <section className="pt-7 flex flex-col xl:flex-row gap-4 w-full">
