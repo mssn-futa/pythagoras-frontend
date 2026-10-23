@@ -5,28 +5,15 @@ import NavBar from "./NavBar";
 
 export default function Layout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => sessionStorage.getItem("theme") === "dark");
 
   useEffect(() => {
-    const saved = sessionStorage.getItem("theme");
-    if (saved === "dark") {
-      setDarkMode(true);
-      document.documentElement.classList.add("dark");
-    }
-  }, []);
+    document.documentElement.classList.toggle("dark", darkMode);
+    sessionStorage.setItem("theme", darkMode ? "dark" : "light");
+  }, [darkMode]);
 
   const handleThemeToggle = () => {
-    setDarkMode((prev) => {
-      const mode = !prev;
-      if (mode) {
-        document.documentElement.classList.add("dark");
-        sessionStorage.setItem("theme", "dark");
-      } else {
-        document.documentElement.classList.remove("dark");
-        sessionStorage.setItem("theme", "light");
-      }
-      return mode;
-    });
+    setDarkMode((prev) => !prev);
   };
 
   return (

@@ -1,15 +1,30 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faMosque, faLocationDot, faSpinner } from '@fortawesome/free-solid-svg-icons';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { islamicApi } from '../../services/islamicApi';
 import { convertTo12Hour } from '../../utils/timeFormatter';
+
+const location = { city: 'Akure', country: 'Nigeria' };
 
 const PrayerTimes = () => {
   const [prayerTimes, setPrayerTimes] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [location, setLocation] = useState({ city: 'Akure', country: 'Nigeria' });
   const [useGeolocation, setUseGeolocation] = useState(false);
+
+  const fetchPrayerTimes = useCallback(async () => {
+    try {
+      setLoading(true);
+      const times = await islamicApi.getPrayerTimes(location.city, location.country);
+      setPrayerTimes(times);
+      setError(null);
+    } catch (err) {
+      setError('Failed to load prayer times');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (useGeolocation) {
@@ -17,9 +32,8 @@ const PrayerTimes = () => {
     } else {
       fetchPrayerTimes();
     }
-  }, [useGeolocation]);
 
-  const getUserLocation = () => {
+    function getUserLocation() {
     if (navigator.geolocation) {
       setLoading(true);
       navigator.geolocation.getCurrentPosition(
@@ -36,7 +50,7 @@ const PrayerTimes = () => {
             setLoading(false);
           }
         },
-        (err) => {
+        () => {
           setError('Location access denied. Using default location.');
           setUseGeolocation(false);
           fetchPrayerTimes();
@@ -46,21 +60,8 @@ const PrayerTimes = () => {
       setError('Geolocation not supported');
       fetchPrayerTimes();
     }
-  };
-
-  const fetchPrayerTimes = async () => {
-    try {
-      setLoading(true);
-      const times = await islamicApi.getPrayerTimes(location.city, location.country);
-      setPrayerTimes(times);
-      setError(null);
-    } catch (err) {
-      setError('Failed to load prayer times');
-      console.error(err);
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [useGeolocation, fetchPrayerTimes]);
 
   const prayers = [
     { name: 'Fajr', key: 'Fajr' },
