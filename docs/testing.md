@@ -118,6 +118,13 @@ branch protection. A red lint check is a release blocker, not an allowed baselin
 
 ## Baseline findings and coordination
 
+**2026-10-23 update:** RELEASE-10 repairs the baseline below and removes the
+obfuscated executable payloads from `tailwind.config.js` and the browser Vite
+config. The composed foundation now passes repository lint without suppression,
+build, six behavior tests (including two real layout-theme regressions), and
+eight browser cases. The table below is historical evidence, not current lint
+status. See [foundation review](foundation-review.md) for the takeover checks.
+
 On PLAT-01's repaired source, `npm run build` passes (2,365 modules), with the
 existing >500 kB chunk warning. `npm run lint` fails with **50 existing errors
 and two warnings**, reproduced before harness edits:
