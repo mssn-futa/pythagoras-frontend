@@ -1,8 +1,9 @@
 import { configure, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { http, HttpResponse } from 'msw'
+import { delay, http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { server } from '../mocks/server.js'
+import { act } from '@testing-library/react'
 import { fail, ok, recorder, resetSession, sessionHandlers, storeRefreshToken, url, useApiOrigin } from '../fixtures/auth.js'
 import { TestApp } from '../fixtures/TestApp.jsx'
 import { page, quizHandler, rawAttempt, rawQuiz, rawResult } from '../fixtures/assessments.js'
@@ -24,7 +25,6 @@ function openAt(path, ...handlers) {
 }
 
 const submitCalls = (rec) => rec.calls.filter((call) => call.method === 'POST' && call.path === '/quiz/submissions/')
-const startCalls = (rec) => rec.calls.filter((call) => call.method === 'POST' && call.path === '/quiz/quizzes/45/attempts/')
 
 async function answerBoth(actor) {
   await actor.click(await screen.findByRole('radio', { name: 'B' }))
@@ -74,13 +74,15 @@ describe('discovery, instructions and start', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/not available/)
   })
 
-  test('start sends one POST and opens the server attempt', async () => {
-    const rec = openAt('/dawah/quizzes/45', quizHandler.detail(), quizHandler.start(), quizHandler.attempt(), quizHandler.detail())
+  test('start sends exactly one POST and opens the server attempt', async () => {
+    const start = recorder()
+    openAt('/dawah/quizzes/45', quizHandler.detail(), quizHandler.start(rawAttempt(), start), quizHandler.attempt())
     const actor = userEvent.setup()
     await actor.click(await screen.findByRole('button', { name: 'Start or continue quiz' }))
     expect(await screen.findByText(/Question 1 of 2/)).toBeVisible()
     expect(location()).toBe('/dawah/attempts/123')
-    expect(startCalls(rec)).toEqual([])
+    expect(start.calls.filter((call) => call.method === 'POST' && call.path === '/quiz/quizzes/45/attempts/')).toHaveLength(1)
+    expect(start.calls[0].body).toEqual({})
   })
 
   test('start network failure is retryable and never creates a second client attempt', async () => {
@@ -338,5 +340,219 @@ describe('history and no answer keys', () => {
     await screen.findByTestId('result-score')
     expect(document.body.innerHTML).not.toMatch(/is_correct|correct_option/)
     expect(screen.queryByText(/pass|fail/i)).toBeNull()
+  })
+})
+
+const iso = (offsetMs) => new Date(Date.now() + offsetMs).toISOString()
+const liveText = (kind) => document.querySelector(`[aria-live="${kind}"]`)?.textContent
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+describe('timing authority under latency', () => {
+  test('auto-submit is sent before expires_at, with a lead margin, after a slow attempt response', async () => {
+    const seen = []
+    const expiresMs = Date.now() + 6000
+    openAt('/dawah/attempts/123',
+      http.get(url('/quiz/attempts/123/'), async () => {
+        await delay(400) // simulated latency: server_time is already stale on arrival
+        return ok(rawAttempt({ server_time: iso(-200), expires_at: new Date(expiresMs).toISOString() }))
+      }),
+      http.post(url('/quiz/submissions/'), async ({ request }) => {
+        const at = Date.now()
+        await delay(100) // let the page render the announcement made just before sending
+        seen.push({ at, announcement: liveText('assertive'), body: await request.json() })
+        return fail(409, 'ATTEMPT_EXPIRED', 'Late.')
+      }))
+    await userEvent.setup().click(await screen.findByRole('radio', { name: 'B' }))
+    await screen.findByRole('heading', { name: 'Time is up' }, { timeout: 9000 })
+    expect(seen).toHaveLength(1)
+    // Sent at least ~2s early (margin is 3s), never at or after expiry.
+    expect(expiresMs - seen[0].at).toBeGreaterThan(1500)
+    expect(seen[0].announcement).toBe('Time is almost up. Submitting your answers now.')
+    expect(seen[0].body).toEqual({ attempt_id: 123, answers: { '10': 102 } })
+  }, 15000)
+
+  test('reaching zero fires the submit exactly once', async () => {
+    let posts = 0
+    openAt('/dawah/attempts/123',
+      quizHandler.attempt(rawAttempt({ server_time: iso(0), expires_at: iso(1000) })),
+      http.post(url('/quiz/submissions/'), () => { posts += 1; return fail(409, 'ATTEMPT_EXPIRED', 'Late.') }))
+    await screen.findByRole('heading', { name: 'Time is up' })
+    await pause(1800)
+    expect(posts).toBe(1)
+  })
+
+  test.each([
+    [299_000, '5 minutes remaining.'],
+    [59_000, '1 minute remaining.'],
+    [9_000, '10 seconds remaining.'],
+  ])('announces %i ms left politely: %s', async (left, text) => {
+    openAt('/dawah/attempts/123', quizHandler.attempt(rawAttempt({ server_time: iso(0), expires_at: iso(left) })))
+    await screen.findByText(/Question 1 of 2/)
+    await vi.waitFor(() => expect(liveText('polite')).toBe(text), { timeout: 3000 })
+    expect(liveText('assertive')).toBe('')
+  })
+})
+
+describe('keyboard focus', () => {
+  test('moves focus to the new question legend on Next and Previous', async () => {
+    openAt('/dawah/attempts/123', quizHandler.attempt())
+    const actor = userEvent.setup()
+    await screen.findByText(/Question 1 of 2/)
+    await actor.click(screen.getByRole('button', { name: 'Next' }))
+    expect(document.activeElement.tagName).toBe('LEGEND')
+    expect(document.activeElement).toHaveTextContent('Second question')
+    await actor.click(screen.getByRole('button', { name: 'Previous' }))
+    expect(document.activeElement).toHaveTextContent('First question')
+  })
+})
+
+describe('re-sync on visibility, focus and online', () => {
+  test.each([
+    ['focus', () => window.dispatchEvent(new Event('focus'))],
+    ['online', () => window.dispatchEvent(new Event('online'))],
+    ['visibilitychange', () => {
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+      document.dispatchEvent(new Event('visibilitychange'))
+    }],
+  ])('%s refetches the attempt, re-anchors the clock and keeps answers', async (_name, fire) => {
+    let gets = 0
+    openAt('/dawah/attempts/123', http.get(url('/quiz/attempts/123/'), () => {
+      gets += 1
+      // The first read is at 10:00; every later read says 10:20 on the server clock.
+      return ok(rawAttempt({ server_time: gets === 1 ? '2026-10-12T10:00:00Z' : '2026-10-12T10:20:00Z' }))
+    }))
+    const actor = userEvent.setup()
+    await actor.click(await screen.findByRole('radio', { name: 'B' }))
+    expect(screen.getByRole('timer')).toHaveTextContent(/^(30:00|29:5\d)$/)
+    act(() => fire())
+    await vi.waitFor(() => expect(screen.getByRole('timer')).toHaveTextContent(/^(10:00|09:5\d)$/))
+    expect(gets).toBe(2)
+    expect(screen.getByRole('radio', { name: 'B' })).toBeChecked()
+  })
+
+  test('a refetch showing the attempt was submitted moves to the saved result', async () => {
+    let gets = 0
+    openAt('/dawah/attempts/123',
+      http.get(url('/quiz/attempts/123/'), () => ok(++gets === 1 ? rawAttempt() : rawAttempt({ status: 'submitted', submission_id: 9, questions: [] }))),
+      quizHandler.result())
+    await screen.findByText(/Question 1 of 2/)
+    act(() => window.dispatchEvent(new Event('focus')))
+    expect(await screen.findByTestId('result-score')).toHaveTextContent('2 / 3 points')
+  })
+
+  test('a refetch showing expiry shows the expired state', async () => {
+    let gets = 0
+    openAt('/dawah/attempts/123',
+      http.get(url('/quiz/attempts/123/'), () => ok(++gets === 1 ? rawAttempt() : rawAttempt({ status: 'expired', questions: [] }))))
+    await screen.findByText(/Question 1 of 2/)
+    act(() => window.dispatchEvent(new Event('focus')))
+    expect(await screen.findByRole('heading', { name: 'Time is up' })).toBeVisible()
+  })
+
+  test('a failed refetch keeps the current clock and answers', async () => {
+    let gets = 0
+    openAt('/dawah/attempts/123', http.get(url('/quiz/attempts/123/'), () => (++gets === 1 ? ok(rawAttempt()) : HttpResponse.error())))
+    await userEvent.setup().click(await screen.findByRole('radio', { name: 'B' }))
+    act(() => window.dispatchEvent(new Event('focus')))
+    await vi.waitFor(() => expect(gets).toBe(2))
+    await pause(50)
+    expect(screen.getByRole('radio', { name: 'B' })).toBeChecked()
+  })
+})
+
+describe('submit edge cases', () => {
+  test('a submit that resolves after the student navigated away does not navigate back', async () => {
+    openAt('/dawah/attempts/123', quizHandler.attempt(),
+      http.post(url('/quiz/submissions/'), async () => { await delay(500); return ok(rawResult()) }))
+    const actor = userEvent.setup()
+    await actor.click(await screen.findByRole('button', { name: 'Review' }))
+    await actor.click(screen.getByRole('button', { name: 'Confirm and submit' }))
+    await actor.click(screen.getByRole('link', { name: 'Home' }))
+    expect(location()).toBe('/')
+    await pause(900)
+    expect(location()).toBe('/')
+  })
+
+  test.each([
+    [403, 'PERMISSION_DENIED', /no longer have access/],
+    [404, 'NOT_FOUND', /couldn't find this attempt/],
+    [409, 'CONFLICT', /did not accept this submission: Odd state\./],
+  ])('%i on submit shows a specific message and never re-sends automatically', async (status, code, message) => {
+    let posts = 0
+    openAt('/dawah/attempts/123', quizHandler.attempt(),
+      http.post(url('/quiz/submissions/'), () => { posts += 1; return fail(status, code, 'Odd state.') }))
+    const actor = userEvent.setup()
+    await actor.click(await screen.findByRole('radio', { name: 'B' }))
+    await actor.click(screen.getByRole('button', { name: 'Review' }))
+    await actor.click(screen.getByRole('button', { name: 'Confirm and submit' }))
+    const alerts = await screen.findAllByRole('alert')
+    expect(alerts.map((a) => a.textContent).join(' ')).toMatch(message)
+    expect(document.body.textContent).not.toMatch(/Nothing was saved/)
+    expect(screen.getByRole('button', { name: 'Confirm and submit' })).toBeDisabled()
+    await pause(300)
+    expect(posts).toBe(1)
+  })
+
+  test('Check attempt status re-reads the attempt and unlocks a still-open attempt', async () => {
+    let gets = 0
+    openAt('/dawah/attempts/123',
+      http.get(url('/quiz/attempts/123/'), () => { gets += 1; return ok(rawAttempt()) }),
+      http.post(url('/quiz/submissions/'), () => fail(409, 'CONFLICT', 'Odd state.')))
+    const actor = userEvent.setup()
+    await actor.click(await screen.findByRole('button', { name: 'Review' }))
+    await actor.click(screen.getByRole('button', { name: 'Confirm and submit' }))
+    await actor.click(await screen.findByRole('button', { name: 'Check attempt status' }))
+    await vi.waitFor(() => expect(gets).toBe(2))
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Confirm and submit' })).toBeEnabled())
+  })
+})
+
+describe('intro for an unavailable quiz and frozen result lookup', () => {
+  test('404 on the quiz still offers Continue my attempt, which opens the existing attempt', async () => {
+    const start = recorder()
+    openAt('/dawah/quizzes/45',
+      http.get(url('/quiz/quizzes/45/'), () => fail(404, 'NOT_FOUND', 'Not found.')),
+      quizHandler.start(rawAttempt(), start), quizHandler.attempt())
+    expect(await screen.findByRole('alert')).toHaveTextContent(/not available/)
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Continue my attempt' }))
+    expect(await screen.findByText(/Question 1 of 2/)).toBeVisible()
+    expect(start.calls).toHaveLength(1)
+  })
+
+  test('403 on the quiz offers Continue; a failing start shows its error', async () => {
+    openAt('/dawah/quizzes/45',
+      http.get(url('/quiz/quizzes/45/'), () => fail(403, 'PERMISSION_DENIED', 'No.')),
+      http.post(url('/quiz/quizzes/45/attempts/'), () => fail(404, 'NOT_FOUND', 'No attempt.')))
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Continue my attempt' }))
+    const alerts = await screen.findAllByRole('alert')
+    expect(alerts).toHaveLength(2)
+    expect(alerts[1]).toHaveTextContent(/not available/)
+    expect(location()).toBe('/dawah/quizzes/45')
+  })
+
+  test('a server error on the quiz has no Continue shortcut, only retry', async () => {
+    openAt('/dawah/quizzes/45', http.get(url('/quiz/quizzes/45/'), () => fail(503, 'SERVICE_UNAVAILABLE', 'Down.')))
+    await screen.findByRole('alert')
+    expect(screen.queryByRole('button', { name: 'Continue my attempt' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeVisible()
+  })
+
+  test('a submitted attempt with submission_id reads the result directly, with no history request', async () => {
+    const rec = recorder()
+    openAt('/dawah/attempts/123',
+      quizHandler.attempt(rawAttempt({ status: 'submitted', submission_id: 9, questions: [] })),
+      quizHandler.result(rawResult(), rec))
+    expect(await screen.findByTestId('result-score')).toHaveTextContent('2 / 3 points')
+    expect(rec.calls.map((c) => c.path)).toEqual(['/quiz/submissions/9/'])
+  })
+
+  test('without submission_id one ?attempt= request is made', async () => {
+    const queries = []
+    openAt('/dawah/attempts/123',
+      quizHandler.attempt(rawAttempt({ status: 'submitted', questions: [] })),
+      http.get(url('/quiz/submissions/'), ({ request }) => { queries.push(new URL(request.url).search); return ok(page([rawResult()])) }))
+    expect(await screen.findByTestId('result-score')).toBeVisible()
+    expect(queries).toHaveLength(1)
+    expect(new URLSearchParams(queries[0]).get('attempt')).toBe('123')
   })
 })

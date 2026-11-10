@@ -60,7 +60,7 @@ async function mockApi(page) {
 
   function attempt() {
     // Start/reload always report the same server-owned expiry; server_time moves on.
-    return { id: 123, quiz_id: 45, status: 'in_progress', started_at: '2026-10-12T10:00:00Z', expires_at: '2036-10-12T10:30:00Z', server_time: '2036-10-12T10:00:00Z', questions }
+    return { id: 123, quiz_id: 45, quiz_title: 'Arabic week 1', submission_id: null, status: 'in_progress', started_at: '2026-10-12T10:00:00Z', expires_at: '2036-10-12T10:30:00Z', server_time: '2036-10-12T10:00:00Z', questions }
   }
 }
 

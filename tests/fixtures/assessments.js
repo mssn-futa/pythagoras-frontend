@@ -25,7 +25,7 @@ export const rawQuestions = () => [
 ]
 
 export const rawAttempt = (over = {}) => ({
-  id: 123, quiz_id: 45, status: 'in_progress', started_at: T0, expires_at: T30, server_time: T0,
+  id: 123, quiz_id: 45, quiz_title: 'Arabic week 1', status: 'in_progress', started_at: T0, expires_at: T30, server_time: T0, submission_id: null,
   questions: rawQuestions(), ...over,
 })
 

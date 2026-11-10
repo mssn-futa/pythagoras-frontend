@@ -9,7 +9,7 @@ import { http } from 'msw'
 import { ok, recorder, resetSession, sessionHandlers, storeRefreshToken, url, useApiOrigin } from '../fixtures/auth.js'
 import { page, rawAttempt, rawResult } from '../fixtures/assessments.js'
 import { refreshSession } from '../../src/services/api'
-import { afterEach, beforeEach } from 'vitest'
+import { afterEach, beforeEach, vi } from 'vitest'
 
 beforeEach(useApiOrigin)
 afterEach(resetSession)
@@ -95,6 +95,27 @@ describe('server clock', () => {
     }
   })
 
+  test('anchors at response arrival and discounts half the measured round trip', () => {
+    let mono = 10_000
+    // The response arrived at mono=10_000 after a 2s round trip; 1s of it is already gone.
+    const clock = createServerClock('2026-10-12T10:00:00Z', '2026-10-12T10:00:30Z', () => mono, { anchorAt: 10_000, rttMs: 2000 })
+    expect(clock.remainingMs()).toBe(29_000)
+    mono += 4000
+    expect(clock.remainingMs()).toBe(25_000)
+    // Mounting later than arrival still counts the time since arrival.
+    const late = createServerClock('2026-10-12T10:00:00Z', '2026-10-12T10:00:30Z', () => mono, { anchorAt: 10_000, rttMs: 0 })
+    expect(late.remainingMs()).toBe(26_000)
+  })
+
+  test('the default monotonic source is performance.now', () => {
+    let now = 1000
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
+    const clock = createServerClock('2026-10-12T10:00:00Z', '2026-10-12T10:00:30Z')
+    now += 5000
+    expect(clock.remainingMs()).toBe(25_000)
+    expect(performance.now).toHaveBeenCalled()
+  })
+
   test('invalid timestamps count as expired rather than unlimited', () => {
     expect(createServerClock('nope', 'nope').remainingMs()).toBe(0)
     expect(formatRemaining(90_000)).toBe('01:30')
@@ -102,19 +123,37 @@ describe('server clock', () => {
   })
 })
 
-describe('result lookup for a submitted attempt', () => {
-  test('scans own history pages for the attempt_id', async () => {
-    const rec = recorder()
+describe('result lookup for a finalized attempt', () => {
+  async function signedIn() {
     storeRefreshToken()
-    server.use(...sessionHandlers(rec))
+    server.use(...sessionHandlers(recorder()))
     await refreshSession()
+  }
+
+  test('uses the attempt submission_id: one direct read, no history request', async () => {
+    await signedIn()
+    const rec = recorder()
+    server.use(http.get(url('/quiz/submissions/9/'), async ({ request }) => { await rec.record(request); return ok(rawResult()) }))
+    expect((await findResultForAttempt(123, 9)).id).toBe(9)
+    expect(rec.calls.map((c) => c.path)).toEqual(['/quiz/submissions/9/'])
+  })
+
+  test('without a submission_id makes ONE filtered history request (?attempt=), never a page scan', async () => {
+    await signedIn()
+    const queries = []
     server.use(http.get(url('/quiz/submissions/'), ({ request }) => {
-      const pageNumber = new URL(request.url).searchParams.get('page')
-      return pageNumber === '1'
-        ? ok(page([rawResult({ id: 1, attempt_id: 1 })], { next: 'x' }))
-        : ok(page([rawResult({ id: 2, attempt_id: 123 })]))
+      queries.push(new URL(request.url).search)
+      return ok(page([rawResult({ id: 2, attempt_id: 123 })], { next: 'more' }))
     }))
     expect((await findResultForAttempt(123)).id).toBe(2)
+    expect(queries).toHaveLength(1)
+    expect(new URLSearchParams(queries[0]).get('attempt')).toBe('123')
     expect(await findResultForAttempt(999)).toBeNull()
+    expect(queries).toHaveLength(2)
+  })
+
+  test('maps submission_id and quiz_title from the attempt', () => {
+    expect(mapAttempt(rawAttempt({ submission_id: 9 }))).toMatchObject({ submissionId: 9, quizTitle: 'Arabic week 1' })
+    expect(mapAttempt(rawAttempt()).submissionId).toBeNull()
   })
 })
