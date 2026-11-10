@@ -35,21 +35,21 @@ const SideBar = ({ isOpen, toggleSidebar }) => {
           onClick={toggleSidebar}
         />
         {isAuthenticated && (
-          <SideBarLink 
-            icon={faUser} 
-            label="Profile" 
-            to="/profile" 
-            hoverFrom="#2D2D2D" 
+          <SideBarLink
+            icon={faUser}
+            label="Profile"
+            to="/profile"
+            hoverFrom="#2D2D2D"
             hoverTo="#949292"
             onClick={toggleSidebar}
           />
         )}
         {isAdmin && (
-          <SideBarLink 
-            icon={faUserShield} 
-            label="Admin panel" 
-            to="/admin" 
-            hoverFrom="#047857" 
+          <SideBarLink
+            icon={faUserShield}
+            label="Admin panel"
+            to="/admin"
+            hoverFrom="#047857"
             hoverTo="#10B981"
             onClick={toggleSidebar}
           />
