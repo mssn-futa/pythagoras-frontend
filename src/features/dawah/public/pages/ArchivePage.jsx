@@ -1,3 +1,4 @@
+import { isCanonicalCategory } from '../../categories.js'
 import { useMemo } from 'react'
 import { useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -22,7 +23,7 @@ function readFilters(params) {
   return {
     search: (params.get('q') ?? '').trim(),
     speaker: (params.get('speaker') ?? '').trim(),
-    category: (params.get('category') ?? '').trim(),
+    category: isCanonicalCategory((params.get('category') ?? '').trim()) ? params.get('category').trim() : '',
     dateFrom: date('from'),
     dateTo: date('to'),
     type: ARCHIVE_TYPES.includes(params.get('type')) ? params.get('type') : 'aud',
