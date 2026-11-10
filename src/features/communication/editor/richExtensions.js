@@ -30,10 +30,17 @@ const FlatListItem = ListItem.extend({
   },
 });
 
+// No start/type: pasted or typed ("3. ") numbering never becomes an attribute (server strips them anyway).
+const PlainOrderedList = OrderedList.extend({
+  addAttributes() {
+    return {};
+  },
+});
+
 // Only href is kept: pasted target/rel/class/title are never carried into the document.
 const LinkHrefOnly = Link.extend({
   addAttributes() {
-    return { href: { default: null } };
+    return { href: { default: null, parseHTML: (element) => element.getAttribute("href")?.trim() ?? null } };
   },
 });
 
@@ -45,18 +52,20 @@ export const richExtensions = () => [
   Italic,
   Heading.configure({ levels: [2, 3] }),
   BulletList,
-  OrderedList,
+  PlainOrderedList,
   FlatListItem,
   Blockquote,
   HardBreak,
   LinkHrefOnly.configure({
     openOnClick: false,
     autolink: false,
-    linkOnPaste: true,
+    // Pasting a URL over a selection would bypass isAllowedUri; links come only from the dialog.
+    linkOnPaste: false,
     protocols: [...LINK_PROTOCOLS],
     defaultProtocol: "https",
     HTMLAttributes: { rel: null, target: null, class: null },
-    isAllowedUri: (url) => validateLinkUrl(url).ok,
+    isAllowedUri: (url) => validateLinkUrl(String(url ?? "").trim()).ok,
+    shouldAutoLink: () => false,
   }),
   UndoRedo,
 ];

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { FormAlert, FormNotice, inputClass } from "../../auth/components/FormControls.jsx";
 import { describeFormError } from "../../auth/formErrors.js";
@@ -6,12 +6,10 @@ import { createDraft, getBroadcast, previewBroadcast, queueBroadcast, updateDraf
 import AudienceSelector from "../components/AudienceSelector.jsx";
 import { cardClass, LoadingLine, PageError, primaryButton, secondaryButton } from "../components/common.jsx";
 import QueueConfirmDialog from "../components/QueueConfirmDialog.jsx";
-import { hasRichFormatting, plainToHtml } from "../editor/richContent.js";
+import EditorLoader from "../editor/EditorLoader.jsx";
+import { hasRichFormatting, plainConversionCollapsesWhitespace, plainToHtml } from "../editor/richContent.js";
 import SafePreviewFrame from "../editor/SafePreviewFrame.jsx";
 import { allows, draftToForm, EMPTY_FORM, formKey, formToDraft, validateForm } from "../model.js";
-
-// The editor (ProseMirror) is a separate chunk, fetched only when rich mode is used.
-const RichEditor = lazy(() => import("../editor/RichEditor.jsx"));
 
 const FORM_FIELDS = ["subject", "body", "body_html", "audience", "department", "level"];
 const VERSION_CONFLICT = "BROADCAST_VERSION_CONFLICT";
@@ -89,6 +87,8 @@ function Editor({ id }) {
   const [queueError, setQueueError] = useState(null);
   const [editorEpoch, setEditorEpoch] = useState(0); // remount the editor to load new canonical content
   const [confirmingPlain, setConfirmingPlain] = useState(false);
+  const [conversionWarning, setConversionWarning] = useState(null);
+  const plainConfirmRef = useRef(null);
 
   const adopt = useCallback((broadcast) => {
     const next = draftToForm(broadcast);
@@ -97,6 +97,7 @@ function Editor({ id }) {
     setBaseline(formKey(next));
     setEditorEpoch((epoch) => epoch + 1);
     setConfirmingPlain(false);
+    setConversionWarning(null);
   }, []);
 
   const load = useCallback(async () => {
@@ -129,16 +130,27 @@ function Editor({ id }) {
   // Conversion is local: nothing is saved (and no saved content overwritten) until the admin saves.
   const switchTo = (format) => {
     setConfirmingPlain(false);
+    setConversionWarning(null);
     if (format === form.bodyFormat) return;
     if (format === "rich") {
       set({ bodyFormat: "rich", bodyHtml: plainToHtml(form.body) });
       setEditorEpoch((epoch) => epoch + 1);
+      if (plainConversionCollapsesWhitespace(form.body)) {
+        setConversionWarning("Extra spaces, indentation and repeated blank lines in your plain text were collapsed in the editor. Review the text before saving; switch back to plain text to keep the original spacing.");
+      }
     } else if (hasRichFormatting(form.bodyHtml) && !confirmingPlain) {
       setConfirmingPlain(true);
     } else {
       set({ bodyFormat: "plain", bodyHtml: "" });
     }
   };
+  const keepRich = () => {
+    setConfirmingPlain(false);
+    document.getElementById(`${formId}-format-rich`)?.focus();
+  };
+  useEffect(() => {
+    if (confirmingPlain) plainConfirmRef.current?.focus();
+  }, [confirmingPlain]);
 
   const failWith = (caught) => {
     const { message, fields } = describeFormError(caught, FORM_FIELDS);
@@ -261,6 +273,7 @@ function Editor({ id }) {
             className={inputClass}
             value={form.subject}
             onChange={(event) => set({ subject: event.target.value })}
+            disabled={saving}
             aria-invalid={fieldErrors.subject ? true : undefined}
             aria-describedby={fieldErrors.subject ? `${formId}-subject-error` : undefined}
             maxLength={250}
@@ -270,26 +283,29 @@ function Editor({ id }) {
           <legend className="mb-1 block text-sm font-medium text-[#4B5563] dark:text-gray-300">Message format</legend>
           {[["plain", "Plain text"], ["rich", "Rich text"]].map(([value, label]) => (
             <label key={value} className="flex items-center gap-2 text-sm text-[#1F2937] dark:text-gray-100">
-              <input type="radio" name={`${formId}-format`} value={value} checked={form.bodyFormat === value} onChange={() => switchTo(value)} className="h-4 w-4 accent-[#2A742F]" />
+              <input id={`${formId}-format-${value}`} type="radio" name={`${formId}-format`} value={value} disabled={saving} checked={form.bodyFormat === value} onChange={() => switchTo(value)} className="h-4 w-4 accent-[#2A742F]" />
               {label}
             </label>
           ))}
         </fieldset>
         {confirmingPlain && (
-          <div role="alertdialog" aria-labelledby={`${formId}-plain-title`} className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+          <div ref={plainConfirmRef} tabIndex={-1} role="alertdialog" aria-labelledby={`${formId}-plain-title`} className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
             <p id={`${formId}-plain-title`} className="font-medium">Switch to plain text?</p>
             <p className="mt-1">Bold, italics, headings, lists, quotes and links will be removed from the message. Nothing changes on the server until you save.</p>
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
               <button type="button" className={secondaryButton} onClick={() => switchTo("plain")}>Remove formatting</button>
-              <button type="button" className={secondaryButton} onClick={() => setConfirmingPlain(false)}>Keep rich text</button>
+              <button type="button" className={secondaryButton} onClick={keepRich}>Keep rich text</button>
             </div>
           </div>
+        )}
+        {conversionWarning && (
+          <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">{conversionWarning}</p>
         )}
         {rich ? (
           <div>
             <p id={`${formId}-body-label`} className="mb-1 block text-sm font-medium text-[#4B5563] dark:text-gray-300">Message (rich text)</p>
-            <Suspense fallback={<LoadingLine>Loading editor…</LoadingLine>}>
-              <RichEditor
+            {/* The editor (ProseMirror) is a separate chunk, fetched only when rich mode is used. */}
+            <EditorLoader
                 key={editorEpoch}
                 id={`${formId}-body`}
                 value={form.bodyHtml}
@@ -297,8 +313,8 @@ function Editor({ id }) {
                 labelledBy={`${formId}-body-label`}
                 invalid={Boolean(bodyErrors)}
                 describedBy={bodyErrors ? `${formId}-body-error` : undefined}
+                disabled={saving}
               />
-            </Suspense>
             {bodyErrors && (
               <p id={`${formId}-body-error`} className="mt-1 text-xs text-red-600 dark:text-red-400">{bodyErrors.join(" ")}</p>
             )}
@@ -312,12 +328,13 @@ function Editor({ id }) {
               rows={8}
               value={form.body}
               onChange={(event) => set({ body: event.target.value })}
+              disabled={saving}
               aria-invalid={bodyErrors ? true : undefined}
               aria-describedby={bodyErrors ? `${formId}-body-error` : undefined}
             />
           </Field>
         )}
-        <AudienceSelector value={form} errors={audienceErrors(fieldErrors) ?? (form.audienceType === "unknown" ? validateForm(form).audience : undefined)} onChange={(next) => set(next)} />
+        <AudienceSelector value={form} errors={audienceErrors(fieldErrors) ?? (form.audienceType === "unknown" ? validateForm(form).audience : undefined)} onChange={(next) => set(next)} disabled={saving} />
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <button type="submit" className={primaryButton} disabled={saving || conflict || (Boolean(draft) && !dirty)}>
             {saving ? "Saving…" : draft ? "Save changes" : "Save draft"}

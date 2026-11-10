@@ -4,6 +4,8 @@ import { http } from 'msw'
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import { admin, ok, recorder, resetSession, sessionHandlers, storeRefreshToken, url, useApiOrigin } from '../fixtures/auth.js'
 import { B, createBackend, wireBroadcast } from '../fixtures/communication.js'
+import EditorLoader from '../../src/features/communication/editor/EditorLoader.jsx'
+import { docToPlainText, plainConversionCollapsesWhitespace, validateLinkUrl } from '../../src/features/communication/editor/richContent.js'
 import { TestApp } from '../fixtures/TestApp.jsx'
 import { server } from '../mocks/server.js'
 
@@ -67,7 +69,7 @@ describe('mode switching', { timeout: 20_000 }, () => {
 
     await actor.click(screen.getByRole('radio', { name: 'Plain text' }))
     await actor.click(screen.getByRole('button', { name: 'Remove formatting' }))
-    expect(await screen.findByLabelText('Message (plain text)')).toHaveValue('Hello bold\n\none')
+    expect(await screen.findByLabelText('Message (plain text)')).toHaveValue('Hello bold\n\n- one')
   })
 
   test('plain drafts are unchanged: plain editor, same payload, no body_format', async () => {
@@ -243,7 +245,12 @@ describe('paste and links', { timeout: 20_000 }, () => {
     ['data:text/html,<b>x</b>', 'Only http:// and https:// links are allowed.'],
     ['mailto:a@example.test', 'Only http:// and https:// links are allowed.'],
     ['example.com/page', 'Enter a full address starting with http:// or https://'],
-    ['https://bad host.test', 'A link address cannot contain spaces.'],
+    ['https://bad host.test', 'A link address cannot contain spaces or hidden characters.'],
+    ['https://exa\u200Bmple.test/', 'A link address cannot contain spaces or hidden characters.'],
+    ['https://example.test/\u202Eevil', 'A link address cannot contain spaces or hidden characters.'],
+    ['https://example.test/\u00A0x', 'A link address cannot contain spaces or hidden characters.'],
+    ['https:///path', 'Enter a valid address, for example https://example.com/page'],
+    ['https://user:pw@example.test/', 'Enter a valid address, for example https://example.com/page'],
     ['https://', 'Enter a valid address, for example https://example.com/page'],
     ['', 'Enter a link address.'],
   ])('link dialog rejects %j', async (value, message) => {
@@ -321,7 +328,10 @@ describe('preview sandbox', { timeout: 20_000 }, () => {
     const doc = frame.getAttribute('srcdoc')
     expect(doc).toMatch(/<meta http-equiv="Content-Security-Policy" content="[^"]*script-src 'none'/)
     expect(doc).toContain("default-src 'none'")
-    expect(doc).toContain('form-action \'none\'')
+    expect(doc).toContain("img-src 'none'")
+    expect(doc).toContain("base-uri 'none'")
+    expect(doc).toContain("form-action 'none'")
+    expect(doc).toContain('<meta name="referrer" content="no-referrer">')
     expect(doc).toContain('<body><p>Hi</p></body>')
   })
 
@@ -374,5 +384,173 @@ describe('preview sandbox', { timeout: 20_000 }, () => {
     await actor.click(within(dialog).getByRole('button', { name: 'Queue broadcast' }))
     await waitFor(() => expect(location()).toBe('/admin/communication/history/7'))
     expect(backend.only('POST', '/queue/')[0].body).toEqual({ version: 4 })
+  })
+})
+
+describe('hardening (review fixes)', { timeout: 20_000 }, () => {
+  async function editorWith(html) {
+    open(createBackend())
+    const actor = userEvent.setup()
+    const box = await chooseRich(actor)
+    await setHtml(box, html)
+    return { actor, box }
+  }
+
+  test('M1: ordered lists never emit start/type, from paste, content or the "3. " input rule', async () => {
+    open(createBackend())
+    const actor = userEvent.setup()
+    const box = await chooseRich(actor)
+    act(() => { editorOf(box).view.pasteHTML('<ol start="5" type="a" style="list-style:upper-roman"><li>one</li></ol>') })
+    expect(editorOf(box).getHTML()).toBe('<ol><li><p>one</p></li></ol>')
+    await setHtml(box, '<ol start="9" type="i"><li>x</li></ol>')
+    expect(editorOf(box).getHTML()).not.toMatch(/start=|type=|style=/)
+    await setHtml(box, '<p></p>')
+    act(() => { editorOf(box).chain().focus().insertContent('3. ').run() })
+    await actor.keyboard(' ')
+    await setHtml(box, '<p>3. </p>')
+    act(() => { editorOf(box).view.someProp('handleTextInput', (f) => f(editorOf(box).view, 4, 4, ' ')) })
+    expect(editorOf(box).getHTML()).not.toMatch(/start=|type=/)
+  })
+
+  test('M2: pasting mailto:/ftp:/javascript: text over a selection never creates a link or an empty href', async () => {
+    const { box } = await editorWith('<p>select me</p>')
+    for (const pasted of ['mailto:a@example.test', 'ftp://example.test/file', 'javascript:alert(1)', 'https://ok.test/']) {
+      act(() => { editorOf(box).chain().focus().setTextSelection({ from: 1, to: 7 }).run() })
+      act(() => { editorOf(box).view.pasteHTML(`<p>${pasted}</p>`) })
+      expect(editorOf(box).getHTML()).not.toMatch(/<a\b/)
+      await setHtml(box, '<p>select me</p>')
+    }
+    // Server/pasted anchors with an unsafe or empty href lose the link but keep the text.
+    await setHtml(box, '<p><a href="">e</a><a href="mailto:a@b.test">m</a><a>n</a><a href="  https://ok.test/a  ">ok</a></p>')
+    expect(editorOf(box).getHTML()).toBe('<p>emn<a href="https://ok.test/a">ok</a></p>')
+  })
+
+  test('M3: the toolbar keeps one reachable tab stop when Undo/Redo are disabled', async () => {
+    open(createBackend())
+    const actor = userEvent.setup()
+    await chooseRich(actor)
+    const toolbar = screen.getByRole('toolbar', { name: 'Formatting' })
+    const stops = () => within(toolbar).getAllByRole('button').filter((b) => b.tabIndex === 0)
+    // Move the roving index onto Undo, then make it disabled again.
+    const undo = within(toolbar).getByRole('button', { name: 'Undo' })
+    expect(undo).toBeDisabled()
+    const bold = within(toolbar).getByRole('button', { name: 'Bold' })
+    bold.focus()
+    await actor.keyboard('{End}') // last enabled button
+    expect(stops()).toHaveLength(1)
+    expect(stops()[0]).not.toBeDisabled()
+    // Force the active index onto a disabled button via focus event, then it must fall back to an enabled one.
+    act(() => undo.dispatchEvent(new FocusEvent('focusin', { bubbles: true })))
+    act(() => { undo.focus() })
+    expect(stops()).toHaveLength(1)
+    expect(stops()[0]).not.toBeDisabled()
+  })
+
+  test('L1: editor and fields are locked while a save is in flight and the saved response is adopted', async () => {
+    const backend = createBackend({ latency: 300, broadcasts: [wireBroadcast({ id: 7, body_format: 'rich', body: 'Hi', body_html: '<p>Hi</p>' })] })
+    open(backend, '/admin/communication/drafts/7')
+    const actor = userEvent.setup()
+    const box = await richBox()
+    await setHtml(box, '<p>Edited</p>')
+    await actor.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(box).toHaveAttribute('contenteditable', 'false'))
+    expect(screen.getByLabelText('Subject')).toBeDisabled()
+    await screen.findByText('Draft saved.')
+    const fresh = await richBox()
+    await waitFor(() => expect(fresh).toHaveAttribute('contenteditable', 'true'))
+    expect(fresh).toHaveTextContent('Edited')
+    expect(backend.only('PATCH')[0].body.body_html).toBe('<p>Edited</p>')
+  })
+
+  test('L1: the plain textarea is locked while saving', async () => {
+    const backend = createBackend({ latency: 300, broadcasts: [wireBroadcast({ id: 7 })] })
+    open(backend, '/admin/communication/drafts/7')
+    const actor = userEvent.setup()
+    const area = await screen.findByLabelText('Message (plain text)')
+    await actor.type(area, '!')
+    await actor.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(area).toBeDisabled())
+    await screen.findByText('Draft saved.')
+  })
+
+  test('L2: rich to plain flattens links as "text (href)" and prefixes list items', async () => {
+    const { actor } = await editorWith('<h2>Title</h2><p>See <a href="https://ok.test/a">the <strong>recording</strong></a> now</p><ul><li>one</li><li>two</li></ul><ol><li>first</li><li>second</li></ol><blockquote><p>quoted</p></blockquote>')
+    await actor.click(screen.getByRole('radio', { name: 'Plain text' }))
+    await actor.click(await screen.findByRole('button', { name: 'Remove formatting' }))
+    expect(await screen.findByLabelText('Message (plain text)')).toHaveValue(
+      'Title\n\nSee the recording (https://ok.test/a) now\n\n- one\n- two\n\n1. first\n2. second\n\nquoted',
+    )
+  })
+
+  test('L2: docToPlainText unit cases', () => {
+    const link = (text, href) => ({ type: 'text', text, marks: [{ type: 'link', attrs: { href } }] })
+    expect(docToPlainText({ type: 'doc', content: [{ type: 'paragraph', content: [link('https://x.test/', 'https://x.test/'), { type: 'hardBreak' }, { type: 'text', text: 'b' }] }, { type: 'paragraph' }] })).toBe('https://x.test/\nb')
+    expect(docToPlainText(undefined)).toBe('')
+  })
+
+  test('L3: plain to rich warns when spacing would be collapsed, not otherwise', async () => {
+    open(createBackend())
+    const actor = userEvent.setup()
+    await actor.type(await screen.findByLabelText('Message (plain text)'), 'a    b')
+    await actor.click(screen.getByRole('radio', { name: 'Rich text' }))
+    expect(await screen.findByText(/were collapsed in the editor/)).toBeVisible()
+    await actor.click(screen.getByRole('radio', { name: 'Plain text' }))
+    expect(screen.queryByText(/were collapsed in the editor/)).toBeNull()
+    expect(screen.getByLabelText('Message (plain text)')).toHaveValue('a    b') // original spacing kept
+    await actor.clear(screen.getByLabelText('Message (plain text)'))
+    await actor.type(screen.getByLabelText('Message (plain text)'), 'a b')
+    await actor.click(screen.getByRole('radio', { name: 'Rich text' }))
+    await richBox()
+    expect(screen.queryByText(/were collapsed in the editor/)).toBeNull()
+    expect(plainConversionCollapsesWhitespace('x\n\n\ny')).toBe(true)
+    expect(plainConversionCollapsesWhitespace('x\n\ny')).toBe(false)
+  })
+
+  test('L4: valid links are stored normalised; unit checks', () => {
+    expect(validateLinkUrl('https://bücher.example/pa th').ok).toBe(false)
+    expect(validateLinkUrl('https://bücher.example/x')).toEqual({ ok: true, href: 'https://xn--bcher-kva.example/x' })
+    expect(validateLinkUrl('HTTPS://Example.test')).toEqual({ ok: true, href: 'https://example.test/' })
+    expect(validateLinkUrl('https://a.test/\u2028x').ok).toBe(false)
+  })
+
+  test('L6: accessible names contain the visible text; plain-switch dialog takes focus and Keep returns it', async () => {
+    const { actor } = await editorWith('<p><strong>x</strong></p><ul><li>y</li></ul>')
+    const toolbar = screen.getByRole('toolbar', { name: 'Formatting' })
+    for (const button of within(toolbar).getAllByRole('button')) {
+      expect(button.getAttribute('aria-label') ?? button.textContent).toContain(button.textContent)
+    }
+    expect(within(toolbar).getByRole('button', { name: 'H2 heading' })).toHaveTextContent('H2')
+    await actor.click(screen.getByRole('radio', { name: 'Plain text' }))
+    expect(await screen.findByRole('alertdialog')).toHaveFocus()
+    await actor.click(screen.getByRole('button', { name: 'Keep rich text' }))
+    expect(screen.getByRole('radio', { name: 'Rich text' })).toHaveFocus()
+  })
+
+  test('L6: closing the link panel (Cancel or Escape) returns focus to the editor', async () => {
+    const { actor, box } = await editorWith('<p>Some text</p>')
+    await actor.click(screen.getByRole('button', { name: 'Link' }))
+    await actor.click(await screen.findByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(box).toHaveFocus())
+    await actor.click(screen.getByRole('button', { name: 'Link' }))
+    await screen.findByLabelText(/Link address/)
+    await actor.keyboard('{Escape}')
+    await waitFor(() => expect(box).toHaveFocus())
+    expect(screen.queryByLabelText(/Link address/)).toBeNull()
+  })
+
+  test('L7: a failed editor chunk shows a recovery UI and Try again loads it', async () => {
+    let calls = 0
+    const loader = () => {
+      calls += 1
+      return calls === 1 ? Promise.reject(new Error('chunk failed')) : import('../../src/features/communication/editor/RichEditor.jsx')
+    }
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    render(<EditorLoader loader={loader} value="<p>Recovered</p>" id="e" labelledBy="l" />)
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('The rich-text editor could not be loaded.')
+    expect(screen.getByRole('button', { name: 'Reload page' })).toBeVisible()
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByRole('textbox', {}, { timeout: 8000 })).toHaveTextContent('Recovered')
+    expect(calls).toBe(2)
   })
 })

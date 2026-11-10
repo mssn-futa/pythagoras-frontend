@@ -10,6 +10,7 @@ export function buildPreviewDocument(html) {
   return (
     `<!doctype html><html><head><meta charset="utf-8">` +
     `<meta http-equiv="Content-Security-Policy" content="${PREVIEW_CSP}">` +
+    `<meta name="referrer" content="no-referrer">` +
     `<meta name="viewport" content="width=device-width,initial-scale=1"><base target="_blank">` +
     `<style>${PREVIEW_STYLE}</style></head><body>${html}</body></html>`
   );

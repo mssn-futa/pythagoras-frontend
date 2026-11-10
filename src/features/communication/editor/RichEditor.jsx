@@ -2,7 +2,7 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import { useEffect, useId, useRef, useState } from "react";
 import { inputClass } from "../../auth/components/FormControls.jsx";
 import { primaryButton, secondaryButton } from "../components/common.jsx";
-import { validateLinkUrl } from "./richContent.js";
+import { docToPlainText, validateLinkUrl } from "./richContent.js";
 import { richExtensions } from "./richExtensions.js";
 
 const toolbarButton =
@@ -16,11 +16,7 @@ const surfaceClass =
   "[&_blockquote]:my-2 [&_blockquote]:border-l-4 [&_blockquote]:border-gray-300 [&_blockquote]:pl-3 [&_blockquote]:text-gray-600 dark:[&_blockquote]:text-gray-300 " +
   "[&_a]:text-[#2A742F] [&_a]:underline dark:[&_a]:text-green-400";
 
-// Nested blocks (list items) each add a separator; collapse to one blank line.
-const snapshot = (editor) => ({
-  html: editor.getHTML(),
-  text: editor.getText({ blockSeparator: "\n\n" }).replace(/\n{3,}/g, "\n\n").trim(),
-});
+const snapshot = (editor) => ({ html: editor.getHTML(), text: docToPlainText(editor.getJSON()) });
 
 function LinkPanel({ editor, onClose }) {
   const inputId = useId();
@@ -101,18 +97,21 @@ function LinkPanel({ editor, onClose }) {
 function Toolbar({ editor, onLink }) {
   const ref = useRef(null);
   const [active, setActive] = useState(0);
+  // [name, visible text, run, pressed, extra class, disabled, aria-label (only when it differs from the visible text)]
   const items = [
-    ["Bold", "B", () => editor.chain().focus().toggleBold().run(), editor.isActive("bold"), "font-bold"],
-    ["Italic", "I", () => editor.chain().focus().toggleItalic().run(), editor.isActive("italic"), "italic"],
-    ["Heading", "H2", () => editor.chain().focus().toggleHeading({ level: 2 }).run(), editor.isActive("heading", { level: 2 })],
-    ["Subheading", "H3", () => editor.chain().focus().toggleHeading({ level: 3 }).run(), editor.isActive("heading", { level: 3 })],
-    ["Bulleted list", "• List", () => editor.chain().focus().toggleBulletList().run(), editor.isActive("bulletList")],
-    ["Numbered list", "1. List", () => editor.chain().focus().toggleOrderedList().run(), editor.isActive("orderedList")],
+    ["Bold", "Bold", () => editor.chain().focus().toggleBold().run(), editor.isActive("bold"), "font-bold"],
+    ["Italic", "Italic", () => editor.chain().focus().toggleItalic().run(), editor.isActive("italic"), "italic"],
+    ["H2", "H2", () => editor.chain().focus().toggleHeading({ level: 2 }).run(), editor.isActive("heading", { level: 2 }), "", false, "H2 heading"],
+    ["H3", "H3", () => editor.chain().focus().toggleHeading({ level: 3 }).run(), editor.isActive("heading", { level: 3 }), "", false, "H3 subheading"],
+    ["Bulleted list", "Bulleted list", () => editor.chain().focus().toggleBulletList().run(), editor.isActive("bulletList")],
+    ["Numbered list", "Numbered list", () => editor.chain().focus().toggleOrderedList().run(), editor.isActive("orderedList")],
     ["Quote", "Quote", () => editor.chain().focus().toggleBlockquote().run(), editor.isActive("blockquote")],
     ["Link", "Link", onLink, editor.isActive("link")],
     ["Undo", "Undo", () => editor.chain().focus().undo().run(), undefined, "", !editor.can().undo()],
     ["Redo", "Redo", () => editor.chain().focus().redo().run(), undefined, "", !editor.can().redo()],
   ];
+  // One tab stop: the active button, or the first enabled one when the active one is disabled.
+  const tabStop = items[active] && !items[active][5] ? active : items.findIndex((item) => !item[5]);
 
   // Roving tabindex: one tab stop for the toolbar, arrow keys move within it.
   const onKeyDown = (event) => {
@@ -135,14 +134,14 @@ function Toolbar({ editor, onLink }) {
       onKeyDown={onKeyDown}
       className="flex flex-wrap gap-1 border-b border-gray-200 bg-white p-1.5 dark:border-gray-600 dark:bg-gray-800"
     >
-      {items.map(([label, text, run, pressed, extra, disabled], index) => (
+      {items.map(([label, text, run, pressed, extra, disabled, ariaLabel], index) => (
         <button
           key={label}
           type="button"
           data-index={index}
-          aria-label={label}
+          aria-label={ariaLabel}
           aria-pressed={pressed}
-          tabIndex={index === active ? 0 : -1}
+          tabIndex={index === tabStop ? 0 : -1}
           disabled={disabled}
           // Keep the editor selection while clicking toolbar buttons.
           onMouseDown={(event) => event.preventDefault()}
@@ -185,11 +184,20 @@ export default function RichEditor({ value, onChange, labelledBy, id, invalid, d
     onUpdate: ({ editor: current }) => onChange?.(snapshot(current)),
   });
 
+  useEffect(() => {
+    if (editor && editor.isEditable === disabled) editor.setEditable(!disabled, false);
+  }, [editor, disabled]);
+
+  const closeLink = () => {
+    setLinkOpen(false);
+    editor.commands.focus();
+  };
+
   if (!editor) return null;
   return (
     <div className={`overflow-hidden rounded-lg border bg-white text-[#1F2937] focus-within:ring-2 focus-within:ring-[#2A742F] dark:bg-gray-900 dark:text-gray-100 ${invalid ? "border-red-500" : "border-gray-300 dark:border-gray-600"} ${surfaceClass}`}>
       <Toolbar editor={editor} onLink={() => setLinkOpen(true)} />
-      {linkOpen && <LinkPanel editor={editor} onClose={() => setLinkOpen(false)} />}
+      {linkOpen && <LinkPanel editor={editor} onClose={closeLink} />}
       <EditorContent editor={editor} />
     </div>
   );
