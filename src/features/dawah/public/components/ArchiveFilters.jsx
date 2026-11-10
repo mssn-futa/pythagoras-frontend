@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { EVENT_CATEGORIES } from '../../categories.js'
 
 const EMPTY_FILTERS = { search: '', speaker: '', category: '', dateFrom: '', dateTo: '', type: 'aud' }
 const input =
@@ -39,7 +40,14 @@ export default function ArchiveFilters({ values, onApply, onClear }) {
       </label>
       <label className="text-sm font-medium text-[#1F2937] dark:text-white">
         Category
-        <input type="text" className={`${input} mt-1`} value={draft.category} onChange={set('category')} placeholder="e.g. jumuah" />
+        <select className={`${input} mt-1`} value={draft.category} onChange={set('category')}>
+          <option value="">Any</option>
+          {EVENT_CATEGORIES.map((category) => (
+            <option key={category.value} value={category.value}>
+              {category.label}
+            </option>
+          ))}
+        </select>
       </label>
       <div className="grid grid-cols-2 gap-3 sm:col-span-2 lg:col-span-1">
         <label className="text-sm font-medium text-[#1F2937] dark:text-white">
