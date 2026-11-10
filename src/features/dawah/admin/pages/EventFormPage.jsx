@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import EventForm from "../components/EventForm.jsx";
 import { Breadcrumbs, Card, PageHeader } from "../components/ui.jsx";
-import { createEvent } from "../dawahAdminService.js";
+import { createEventSafely } from "../dawahAdminService.js";
 
 /** /admin/events/new: creates a draft event, then opens it. */
 export default function EventFormPage() {
@@ -13,7 +13,7 @@ export default function EventFormPage() {
       <Card>
         <EventForm
           submitLabel="Create event"
-          onSubmit={createEvent}
+          onSubmit={createEventSafely}
           onSaved={(event) => navigate(`/admin/events/${event.id}`, { state: { notice: "Draft event created." } })}
         />
       </Card>

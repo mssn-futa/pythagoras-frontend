@@ -1,7 +1,6 @@
 import { useId } from "react";
 import { AUDIO_LIMIT_BYTES } from "../constants.js";
 import { formatBytes } from "../time.js";
-import { useAudioUpload } from "../useAudioUpload.js";
 import { Alert, Card, inputClass, primaryButton, secondaryButton } from "./ui.jsx";
 
 const RETRY_LABELS = {
@@ -30,30 +29,25 @@ function validationStepText(phase) {
  * Audio upload controls for one saved draft resource. Byte progress and server
  * validation are separate steps; "ready" comes only from the server.
  */
-export default function AudioUploadPanel({ eventId, resource, onResourceChange }) {
+export default function AudioUploadPanel({ resource, upload }) {
   const inputId = useId();
-  const upload = useAudioUpload({ eventId, resourceId: resource.id, onResourceChange });
-  const busy = ["requesting", "uploading", "validating"].includes(upload.phase);
+  const busy = upload.busy;
   const published = resource.status === "published";
-
-  if (published) {
-    return (
-      <Card aria-label="Audio file">
-        <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Audio file</h2>
-        <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Published audio cannot be replaced. Unpublish this resource first to upload different audio.</p>
-      </Card>
-    );
-  }
+  const showStatus = upload.phase !== "idle" && upload.fileName;
 
   const percent = Math.round(upload.progress * 100);
   return (
     <Card aria-label="Audio file">
       <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Audio file</h2>
       <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-        {resource.storageStatus === "ready" ? "Audio is ready. Upload again to replace it." : "Upload an MP3 to make this draft publishable."}
+        {published
+          ? "Published audio cannot be replaced. Unpublish this resource first to upload different audio."
+          : resource.storageStatus === "ready"
+            ? "Audio is ready. Upload again to replace it."
+            : "Upload an MP3 to make this draft publishable."}
       </p>
       <div className="mt-4 space-y-4">
-        {(upload.phase === "idle" || upload.phase === "failed" || upload.phase === "ready" || upload.phase === "pending") && (
+        {!published && (upload.phase === "idle" || upload.phase === "failed" || upload.phase === "ready" || upload.phase === "pending") && (
           <div>
             <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               MP3 file <span className="font-normal text-xs text-gray-500 dark:text-gray-400">(up to {formatBytes(AUDIO_LIMIT_BYTES)})</span>
@@ -73,14 +67,14 @@ export default function AudioUploadPanel({ eventId, resource, onResourceChange }
           </div>
         )}
 
-        {upload.phase !== "idle" && upload.fileName && (
+        {showStatus && (
           <p className="text-sm text-gray-700 dark:text-gray-300 break-all">
             {upload.fileName}
             {upload.fileSize != null && <span className="text-gray-500 dark:text-gray-400"> · {formatBytes(upload.fileSize)}</span>}
           </p>
         )}
 
-        {upload.phase !== "idle" && upload.fileName && (
+        {showStatus && (
           <ol className="space-y-3 text-sm" aria-label="Upload steps">
             <li>
               <div className="flex justify-between gap-2">
@@ -109,7 +103,7 @@ export default function AudioUploadPanel({ eventId, resource, onResourceChange }
         {(upload.phase === "failed" || upload.phase === "pending") && <Alert tone={upload.phase === "failed" ? "error" : "warning"}>{upload.message}</Alert>}
 
         <div className="flex flex-wrap gap-2">
-          {busy && upload.phase === "uploading" && (
+          {(upload.phase === "requesting" || upload.phase === "uploading") && (
             <button type="button" className={secondaryButton} onClick={upload.cancel}>
               Cancel upload
             </button>

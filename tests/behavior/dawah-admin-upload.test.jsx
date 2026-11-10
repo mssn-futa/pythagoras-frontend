@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import * as transport from '../../src/features/dawah/admin/uploadTransport.js'
-import { fail, ok, resetSession, url, useApiOrigin } from '../fixtures/auth.js'
+import { API, fail, ok, resetSession, url, useApiOrigin } from '../fixtures/auth.js'
 import { mp3, R2_PUT_URL, rawEvent, rawIntent, rawResource, renderAdminApp } from '../fixtures/dawah.jsx'
 
 const { putToSignedUrl, UploadTransportError } = transport
@@ -21,20 +21,21 @@ afterEach(resetSession)
  * Simulated Pythagoras + R2 backend for one draft audio resource.
  * `put` decides each R2 PUT response; `finalize` each finalize response.
  */
-function backend({ put, finalize, storage = 'none', intentExpiries = [] } = {}) {
+function backend({ put, finalize, storage = 'none', uploadedAt, intentExpiries = [], intentGate, intentUrl } = {}) {
   const log = { intents: [], puts: [], finalizes: [], resourceReads: 0 }
-  const state = { storage }
+  const state = { storage, uploadedAt }
   const handlers = [
     http.get(url('/dawah/events/3/'), () => ok(rawEvent({ status: 'published' }))),
     http.get(url('/dawah/events/3/resources/8/'), () => {
       log.resourceReads += 1
-      return ok(rawResource({ storage_status: state.storage, media_url: null, preview_url: state.storage === 'ready' ? 'https://r2.example.test/preview?sig=1' : undefined }))
+      return ok(rawResource({ storage_status: state.storage, uploaded_at: state.uploadedAt, media_url: null, preview_url: state.storage === 'ready' ? 'https://r2.example.test/preview?sig=1' : undefined }))
     }),
     http.post(url('/dawah/events/3/resources/8/audio/'), async ({ request }) => {
       const body = await request.json()
+      await intentGate
       log.intents.push({ auth: request.headers.get('authorization'), body })
       const n = log.intents.length
-      return ok(rawIntent({ upload_id: 10 + n, upload_url: `${R2_PUT_URL}&n=${n}`, expires_at: intentExpiries[n - 1] ?? '2099-01-01T00:00:00Z' }), 'Created.', { status: 201 })
+      return ok(rawIntent({ upload_id: 10 + n, upload_url: intentUrl ?? `${R2_PUT_URL}&n=${n}`, expires_at: intentExpiries[n - 1] ?? '2099-01-01T00:00:00Z' }), 'Created.', { status: 201 })
     }),
     http.put('https://r2.example.test/staging/abc123', async ({ request }) => {
       log.puts.push({ auth: request.headers.get('authorization'), contentType: request.headers.get('content-type'), query: new URL(request.url).search, bytes: (await request.arrayBuffer()).byteLength, cookie: request.headers.get('cookie') })
@@ -217,6 +218,180 @@ describe('audio upload flow', () => {
     expect(b.log.finalizes).toEqual([])
     act(() => finishPut())
     expect(await screen.findByText(/server confirmed this audio is ready/i)).toBeInTheDocument()
+  })
+})
+
+const deferred = () => {
+  let resolve
+  const promise = new Promise((done) => { resolve = done })
+  return { promise, resolve }
+}
+
+/** Replaces the real PUT once with one that never completes until aborted/finished. */
+function holdPut() {
+  const held = { signal: null, finish: null }
+  transport.putToSignedUrl.mockImplementationOnce(({ signal }) => {
+    held.signal = signal
+    return new Promise((resolve, reject) => {
+      held.finish = () => resolve({ etag: '"e"' })
+      signal.addEventListener('abort', () => reject(new UploadTransportError('aborted')), { once: true })
+    })
+  })
+  return held
+}
+
+describe('cancel, unmount and concurrent actions', () => {
+  test('Cancel during the byte upload aborts the PUT and never finalizes; retry is offered', async () => {
+    const b = backend()
+    const held = holdPut()
+    open(b)
+    const user = await chooseFile()
+    await waitFor(() => expect(held.signal).not.toBeNull())
+    await user.click(screen.getByRole('button', { name: 'Cancel upload' }))
+    expect(await screen.findByText('Upload cancelled. Your draft is saved.')).toBeInTheDocument()
+    expect(held.signal.aborted).toBe(true)
+    expect(b.log.finalizes).toEqual([])
+    expect(screen.getByRole('button', { name: 'Retry upload' })).toBeInTheDocument()
+  })
+
+  test('Cancel while the upload link is being requested: no PUT and no finalize afterwards', async () => {
+    const gate = deferred()
+    const b = backend({ intentGate: gate.promise })
+    open(b)
+    const user = await chooseFile()
+    await user.click(await screen.findByRole('button', { name: 'Cancel upload' }))
+    expect(await screen.findByText('Upload cancelled. Your draft is saved.')).toBeInTheDocument()
+    gate.resolve()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(transport.putToSignedUrl).not.toHaveBeenCalled()
+    expect(b.log.puts).toEqual([])
+    expect(b.log.finalizes).toEqual([])
+  })
+
+  test('leaving the page during the intent request never PUTs or finalizes', async () => {
+    const gate = deferred()
+    const b = backend({ intentGate: gate.promise })
+    const view = open(b)
+    await chooseFile()
+    await screen.findByRole('button', { name: 'Cancel upload' })
+    view.unmount()
+    gate.resolve()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(b.log.puts).toEqual([])
+    expect(b.log.finalizes).toEqual([])
+  })
+
+  test('leaving the page during the PUT aborts it and skips finalize', async () => {
+    const b = backend()
+    const held = holdPut()
+    const view = open(b)
+    await chooseFile()
+    await waitFor(() => expect(held.signal).not.toBeNull())
+    view.unmount()
+    expect(held.signal.aborted).toBe(true)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(b.log.finalizes).toEqual([])
+  })
+
+  test('publish, unpublish and delete are blocked while an upload is running', async () => {
+    const b = backend({ storage: 'ready' })
+    const held = holdPut()
+    open(b)
+    const user = await chooseFile()
+    await waitFor(() => expect(held.signal).not.toBeNull())
+    expect(screen.getByRole('button', { name: 'Publish resource' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Delete resource' })).toBeDisabled()
+    expect(screen.getByText(/An upload is in progress/)).toBeInTheDocument()
+    expect(screen.getByText('Uploading… 0%')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Cancel upload' }))
+    await screen.findByText('Upload cancelled. Your draft is saved.')
+    expect(screen.getByRole('button', { name: 'Publish resource' })).toBeEnabled()
+  })
+})
+
+describe('replacing an already-ready draft', () => {
+  test('a finalize that confirms nothing about this upload leaves the old asset un-confirmed', async () => {
+    const b = backend({ storage: 'ready', uploadedAt: '2026-10-01T10:00:00Z', finalize: () => ok({}) })
+    open(b)
+    await chooseFile()
+    expect(await screen.findByText(/still shows the previous audio/)).toBeInTheDocument()
+    expect(screen.queryByText(/server confirmed this audio is ready/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Check again' })).toBeInTheDocument()
+  })
+
+  test('an explicit ready finalize outcome confirms the replacement', async () => {
+    const b = backend({ storage: 'ready', uploadedAt: '2026-10-01T10:00:00Z', finalize: () => ok({ upload: { status: 'ready' } }) })
+    open(b)
+    await chooseFile()
+    expect(await screen.findByText(/server confirmed this audio is ready/i)).toBeInTheDocument()
+  })
+
+  test('a changed uploaded_at on the re-read resource identifies the new asset (check again)', async () => {
+    const b = backend({ storage: 'ready', uploadedAt: '2026-10-01T10:00:00Z', finalize: () => ok({}) })
+    open(b)
+    const user = await chooseFile()
+    await screen.findByText(/still shows the previous audio/)
+    b.state.uploadedAt = '2026-10-09T12:05:00Z'
+    await user.click(screen.getByRole('button', { name: 'Check again' }))
+    expect(await screen.findByText(/server confirmed this audio is ready/i)).toBeInTheDocument()
+  })
+
+  test('a rejected replacement asks for another file even though the old asset is ready', async () => {
+    const b = backend({ storage: 'ready', finalize: () => ok({ upload: { status: 'rejected' } }) })
+    open(b)
+    await chooseFile()
+    expect(await screen.findByText(/did not accept this audio file/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Choose another file' })).toBeInTheDocument()
+    expect(screen.queryByText(/server confirmed/i)).not.toBeInTheDocument()
+  })
+
+  test('a still-validating replacement says to check again', async () => {
+    const b = backend({ storage: 'ready', finalize: () => ok({ upload: { status: 'validating' } }) })
+    open(b)
+    await chooseFile()
+    expect(await screen.findByText('The server has not marked this audio ready yet.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Check again' })).toBeInTheDocument()
+  })
+})
+
+describe('file types, finalize conflicts and transport isolation', () => {
+  test.each(['audio/mp3', 'audio/x-mpeg'])('accepts a browser-reported %s .mp3 and declares audio/mpeg', async (type) => {
+    const b = backend()
+    open(b)
+    await chooseFile(new File([new Uint8Array(8)], 'khutbah.mp3', { type }))
+    expect(await screen.findByText(/server confirmed this audio is ready/i)).toBeInTheDocument()
+    expect(b.log.intents[0].body.content_type).toBe('audio/mpeg')
+  })
+
+  test('a finalize 409 (lease/state conflict) offers retry validation, not a new file', async () => {
+    const b = backend({
+      finalize: (n, state) => {
+        if (n === 1) return fail(409, 'VALIDATION_IN_PROGRESS', 'Validation is already running.')
+        state.storage = 'ready'
+        return ok({ upload: { status: 'ready' } })
+      },
+    })
+    open(b)
+    const user = await chooseFile()
+    expect(await screen.findByText(/Validation is already running/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Choose another file' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Retry validation' }))
+    expect(await screen.findByText(/server confirmed this audio is ready/i)).toBeInTheDocument()
+    expect(b.log.puts).toHaveLength(1)
+  })
+
+  test('a same-origin upload_url still gets no Authorization header (cookies are not asserted: jsdom/MSW cannot observe them)', async () => {
+    const seen = []
+    const b = backend({ intentUrl: `${API}/storage/staging/abc` })
+    b.handlers.unshift(http.put(`${API}/storage/staging/abc`, ({ request }) => {
+      seen.push({ auth: request.headers.get('authorization'), contentType: request.headers.get('content-type') })
+      return new HttpResponse(null, { status: 200 })
+    }))
+    open(b)
+    await chooseFile()
+    expect(await screen.findByText(/server confirmed this audio is ready/i)).toBeInTheDocument()
+    expect(seen).toEqual([{ auth: null, contentType: 'audio/mpeg' }])
+    expect(b.log.intents[0].auth).toMatch(/^Bearer /) // the API call did carry it
   })
 })
 

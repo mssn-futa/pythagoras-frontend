@@ -1,4 +1,4 @@
-import { api } from "../../../services/api";
+import { api, ApiError } from "../../../services/api";
 import { AUDIO_CONTENT_TYPE, LIST_PAGE_SIZE_MAX, PAGE_SIZE } from "./constants.js";
 import { lagosLocalToUtcIso, utcIsoToLagosLocal } from "./time.js";
 
@@ -111,13 +111,82 @@ export function toEventFormValues(event) {
 // ---- events --------------------------------------------------------------
 
 /** `status`: draft|published|unpublished|all (assumed draft-inclusive value). */
-export async function listEvents({ status = "all", upcoming = false, page = 1, pageSize = PAGE_SIZE } = {}) {
+export async function listEvents({ status = "all", upcoming = false, page = 1, pageSize = PAGE_SIZE, search } = {}) {
   const params = { status, page, page_size: pageSize };
   if (upcoming) params.upcoming = true;
+  if (search) params.search = search;
   return mapPage(await api.get(eventsUrl, { params }), mapEvent);
 }
 
-export const listAllEventsForPicker = () => listEvents({ status: "all", pageSize: LIST_PAGE_SIZE_MAX });
+const MAX_PAGES = 50;
+
+/** Follows `next` until the list is exhausted (bounded), so no hard cap hides records. */
+async function fetchAllPages(fetchPage) {
+  const first = await fetchPage(1);
+  const results = [...first.results];
+  let last = first;
+  for (let page = 2; last.next && page <= MAX_PAGES; page += 1) {
+    last = await fetchPage(page);
+    results.push(...last.results);
+  }
+  return { ...first, next: null, results };
+}
+
+export const listAllEventsForPicker = () =>
+  fetchAllPages((page) => listEvents({ status: "all", page, pageSize: LIST_PAGE_SIZE_MAX }));
+
+export const listAllResources = (eventId) => fetchAllPages((page) => listResources(eventId, { page }));
+
+const isTransportFailure = (error) => error instanceof ApiError && error.status === 0;
+
+/** Raised when a create's outcome could not be confirmed after a lost response. */
+function unconfirmed(what) {
+  return new ApiError({
+    status: 0,
+    code: "SAVE_UNCONFIRMED",
+    message: `We could not confirm whether the ${what} was saved. Check the list for it before saving again, to avoid a duplicate draft.`,
+  });
+}
+
+/**
+ * Create an event. A lost response (status 0) may still have created the draft,
+ * so look for it before letting the admin resubmit.
+ */
+export async function createEventSafely(values) {
+  try {
+    return await createEvent(values);
+  } catch (error) {
+    if (!isTransportFailure(error)) throw error;
+    const payload = toEventPayload(values);
+    let found;
+    try {
+      const page = await listEvents({ status: "all", search: payload.title, pageSize: LIST_PAGE_SIZE_MAX });
+      found = page.results.find((event) => event.title === payload.title && event.startTime === payload.start_time && event.status === "draft") ?? null;
+    } catch {
+      throw unconfirmed("event");
+    }
+    if (found) return found;
+    throw error; // verified absent: safe to submit again
+  }
+}
+
+/** Same protection for the audio draft: a recovered draft is returned instead of a duplicate. */
+export async function createAudioResourceSafely(eventId, { title }) {
+  try {
+    return await createAudioResource(eventId, { title });
+  } catch (error) {
+    if (!isTransportFailure(error)) throw error;
+    let found;
+    try {
+      const all = await listAllResources(eventId);
+      found = all.results.find((item) => item.type === "aud" && item.status === "draft" && item.title === title.trim()) ?? null;
+    } catch {
+      throw unconfirmed("draft");
+    }
+    if (found) return found;
+    throw error;
+  }
+}
 
 export async function getEvent(id) {
   return mapEvent(await api.get(eventUrl(id)));
@@ -165,17 +234,19 @@ export const unpublishResource = (eventId, id) => api.post(`${resourceUrl(eventI
 // ---- audio upload --------------------------------------------------------
 
 /** Step 1: intent metadata only, never bytes. */
-export async function requestAudioUpload(eventId, resourceId, file) {
-  const body = { file_name: file.name, content_type: file.type || AUDIO_CONTENT_TYPE, size_bytes: file.size };
-  return mapUploadIntent(await api.post(`${resourceUrl(eventId, resourceId)}audio/`, body));
+export async function requestAudioUpload(eventId, resourceId, file, { signal } = {}) {
+  // Only MP3 is accepted, so the declared type is always audio/mpeg even when the
+  // browser reports a legacy alias (audio/mp3, audio/x-mpeg).
+  const body = { file_name: file.name, content_type: AUDIO_CONTENT_TYPE, size_bytes: file.size };
+  return mapUploadIntent(await api.post(`${resourceUrl(eventId, resourceId)}audio/`, body, { signal }));
 }
 
 /**
  * Step 3: ask the server to validate what it observed in storage. No storage
  * key is sent. The caller must re-read the resource to learn the real state.
  */
-export async function finalizeUpload(uploadId) {
-  const data = await api.post(`/dawah/uploads/${uploadId}/finalize/`);
+export async function finalizeUpload(uploadId, { signal } = {}) {
+  const data = await api.post(`/dawah/uploads/${uploadId}/finalize/`, undefined, { signal });
   return {
     uploadStatus: data?.upload?.status ?? data?.upload_status ?? null,
     previewUrl: data?.preview_url ?? data?.resource?.preview_url ?? null,

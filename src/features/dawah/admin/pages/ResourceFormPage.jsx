@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Alert, Breadcrumbs, Card, ErrorState, Field, Loading, PageHeader, primaryButton } from "../components/ui.jsx";
-import { createAudioResource, getEvent } from "../dawahAdminService.js";
+import { createAudioResourceSafely, getEvent } from "../dawahAdminService.js";
 import { describeAdminError } from "../errors.js";
 import { useLoad } from "../hooks.js";
 
@@ -25,7 +25,7 @@ function ResourceForm({ eventId }) {
     setClientError(null);
     setSaving(true);
     try {
-      const resource = await createAudioResource(eventId, { title });
+      const resource = await createAudioResourceSafely(eventId, { title });
       navigate(`/admin/events/${eventId}/resources/${resource.id}`, { state: { notice: "Draft saved. Now upload the audio file." } });
     } catch (caught) {
       setError(caught);

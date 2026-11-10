@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { http } from 'msw'
+import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { server } from '../mocks/server.js'
 import { fail, ok, recorder, resetSession, sessionHandlers, storeRefreshToken, student, url, useApiOrigin } from '../fixtures/auth.js'
@@ -359,5 +359,70 @@ describe('DAWAH-01 conflict codes', () => {
     ])
     await userEvent.setup().click(await screen.findByRole('button', { name: 'Go to the first page' }))
     expect(await screen.findByRole('link', { name: 'Friday khutbah' })).toBeInTheDocument()
+  })
+})
+
+describe('confirm focus management', () => {
+  test('focus moves to the confirm button on open and back to the trigger on cancel', async () => {
+    renderAdminApp('/admin/events/3', [
+      http.get(url('/dawah/events/3/'), () => ok(rawEvent({ status: 'draft' }))),
+      http.get(url('/dawah/events/3/resources/'), () => ok(paged([]))),
+    ])
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Delete event' }))
+    const dialog = screen.getByRole('alertdialog')
+    expect(within(dialog).getByRole('button', { name: 'Delete event' })).toHaveFocus()
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(await screen.findByRole('button', { name: 'Delete event' })).toHaveFocus()
+    await user.click(screen.getByRole('button', { name: 'Delete event' }))
+    await user.keyboard('{Escape}')
+    expect(await screen.findByRole('button', { name: 'Delete event' })).toHaveFocus()
+  })
+})
+
+describe('lost create responses do not duplicate drafts', () => {
+  const fill = async (user) => {
+    await user.type(await screen.findByLabelText('Title'), 'Patience')
+    await user.click(screen.getByRole('button', { name: 'Save draft' }))
+  }
+
+  test('a draft that was saved despite the lost response is recovered, not recreated', async () => {
+    const posts = []
+    renderAdminApp('/admin/events/3/resources/new', [
+      http.get(url('/dawah/events/3/'), () => ok(rawEvent())),
+      http.post(url('/dawah/events/3/resources/'), () => { posts.push(1); return HttpResponse.error() }),
+      http.get(url('/dawah/events/3/resources/'), () => ok(paged([rawResource({ id: 31, title: 'Patience' })]))),
+      http.get(url('/dawah/events/3/resources/31/'), () => ok(rawResource({ id: 31, title: 'Patience' }))),
+    ])
+    await fill(userEvent.setup())
+    expect(await screen.findByText('Draft saved. Now upload the audio file.')).toBeInTheDocument()
+    expect(location()).toBe('/admin/events/3/resources/31')
+    expect(posts).toHaveLength(1)
+  })
+
+  test('when the draft cannot be found the admin may safely resubmit', async () => {
+    let attempt = 0
+    renderAdminApp('/admin/events/3/resources/new', [
+      http.get(url('/dawah/events/3/'), () => ok(rawEvent())),
+      http.post(url('/dawah/events/3/resources/'), () => { attempt += 1; return attempt === 1 ? HttpResponse.error() : ok(rawResource({ id: 32 }), 'Saved.', { status: 201 }) }),
+      http.get(url('/dawah/events/3/resources/'), () => ok(paged([]))),
+      http.get(url('/dawah/events/3/resources/32/'), () => ok(rawResource({ id: 32 }))),
+    ])
+    const user = userEvent.setup()
+    await fill(user)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/unable to reach the server/i)
+    await user.click(screen.getByRole('button', { name: 'Save draft' }))
+    expect(await screen.findByText('Draft saved. Now upload the audio file.')).toBeInTheDocument()
+    expect(attempt).toBe(2)
+  })
+
+  test('when saving cannot be verified the admin is told to check the list first', async () => {
+    renderAdminApp('/admin/events/3/resources/new', [
+      http.get(url('/dawah/events/3/'), () => ok(rawEvent())),
+      http.post(url('/dawah/events/3/resources/'), () => HttpResponse.error()),
+      http.get(url('/dawah/events/3/resources/'), () => HttpResponse.error()),
+    ])
+    await fill(userEvent.setup())
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not confirm whether the draft was saved.*duplicate/i)
   })
 })

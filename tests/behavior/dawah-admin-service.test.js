@@ -1,7 +1,7 @@
-import { http } from 'msw'
+import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, test } from 'vitest'
 import {
-  createAudioResource, createEvent, finalizeUpload, listEvents, listResources, mapEvent, mapPage, mapResource,
+  createAudioResource, createEvent, finalizeUpload, createEventSafely, listAllEventsForPicker, listAllResources, listEvents, listResources, mapEvent, mapPage, mapResource,
   requestAudioUpload, toEventFormValues, toEventPayload, updateEvent,
 } from '../../src/features/dawah/admin/dawahAdminService.js'
 import { formatLagos, lagosLocalToUtcIso, utcIsoToLagosLocal } from '../../src/features/dawah/admin/time.js'
@@ -133,5 +133,44 @@ describe('service calls', () => {
     const result = await finalizeUpload(12)
     expect(rec.calls[0].body).toBeNull()
     expect(result.previewUrl).toBe('https://r2.example.test/preview?sig=1')
+  })
+})
+
+describe('long lists and lost create responses', () => {
+  test('pickers and resource lists follow `next` past 100 records', async () => {
+    const pages = []
+    server.use(
+      http.get(url('/dawah/events/'), ({ request }) => {
+        const page = Number(new URL(request.url).searchParams.get('page'))
+        pages.push(page)
+        return ok(paged([rawEvent({ id: page })], { next: page < 3 ? 'more' : null }))
+      }),
+      http.get(url('/dawah/events/3/resources/'), ({ request }) => {
+        const page = Number(new URL(request.url).searchParams.get('page'))
+        return ok(paged([rawResource({ id: page })], { next: page < 2 ? 'more' : null }))
+      }),
+    )
+    expect((await listAllEventsForPicker()).results.map((event) => event.id)).toEqual([1, 2, 3])
+    expect(pages).toEqual([1, 2, 3])
+    expect((await listAllResources(3)).results.map((item) => item.id)).toEqual([1, 2])
+  })
+
+  const values = toEventFormValues(mapEvent(rawEvent()))
+
+  test('createEventSafely returns a draft saved despite a lost response', async () => {
+    let posts = 0
+    server.use(
+      http.post(url('/dawah/events/'), () => { posts += 1; return HttpResponse.error() }),
+      http.get(url('/dawah/events/'), () => ok(paged([rawEvent({ id: 9 })]))),
+    )
+    expect(await createEventSafely(values)).toMatchObject({ id: 9 })
+    expect(posts).toBe(1)
+  })
+
+  test('createEventSafely rethrows when verified absent and flags unverifiable saves', async () => {
+    server.use(http.post(url('/dawah/events/'), () => HttpResponse.error()), http.get(url('/dawah/events/'), () => ok(paged([]))))
+    await expect(createEventSafely(values)).rejects.toMatchObject({ code: 'NETWORK_ERROR' })
+    server.use(http.get(url('/dawah/events/'), () => HttpResponse.error()))
+    await expect(createEventSafely(values)).rejects.toMatchObject({ code: 'SAVE_UNCONFIRMED' })
   })
 })

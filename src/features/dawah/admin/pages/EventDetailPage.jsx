@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import EventForm from "../components/EventForm.jsx";
 import ResourceTable from "../components/ResourceTable.jsx";
 import { Alert, Breadcrumbs, Card, ConfirmAction, EmptyState, ErrorState, Loading, PageHeader, StatusBadge, primaryButton, secondaryButton } from "../components/ui.jsx";
-import { deleteEvent, getEvent, listResources, publishEvent, unpublishEvent, updateEvent } from "../dawahAdminService.js";
+import { deleteEvent, getEvent, listAllResources, publishEvent, unpublishEvent, updateEvent } from "../dawahAdminService.js";
 import { adminErrorMessage } from "../errors.js";
 import { useLoad } from "../hooks.js";
 import { formatLagos } from "../time.js";
@@ -12,7 +12,7 @@ function EventDetail({ eventId }) {
   const navigate = useNavigate();
   const location = useLocation();
   const eventLoader = useCallback(() => getEvent(eventId), [eventId]);
-  const resourcesLoader = useCallback(() => listResources(eventId), [eventId]);
+  const resourcesLoader = useCallback(() => listAllResources(eventId), [eventId]);
   const eventState = useLoad(eventLoader);
   const resourcesState = useLoad(resourcesLoader);
   const [busy, setBusy] = useState(false);

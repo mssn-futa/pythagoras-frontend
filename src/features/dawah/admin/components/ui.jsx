@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { STATUS_LABELS } from "../constants.js";
 
@@ -185,30 +185,56 @@ export function Pager({ page, count, pageSize, hasNext, hasPrevious, onPage }) {
  */
 export function ConfirmAction({ label, confirmLabel = "Confirm", prompt, onConfirm, disabled, busy, tone = "secondary" }) {
   const [asking, setAsking] = useState(false);
+  const triggerRef = useRef(null);
+  const confirmRef = useRef(null);
+  const restoreFocus = useRef(false);
   const baseClass = tone === "danger" ? dangerButton : secondaryButton;
+
+  // Move focus into the prompt when it opens; hand it back to the trigger when it closes.
+  useEffect(() => {
+    if (asking) confirmRef.current?.focus();
+    else if (restoreFocus.current) {
+      restoreFocus.current = false;
+      triggerRef.current?.focus();
+    }
+  }, [asking]);
+
+  const close = () => {
+    restoreFocus.current = true;
+    setAsking(false);
+  };
+
   if (!asking) {
     return (
-      <button type="button" className={baseClass} disabled={disabled || busy} onClick={() => setAsking(true)}>
+      <button ref={triggerRef} type="button" className={baseClass} disabled={disabled || busy} onClick={() => setAsking(true)}>
         {label}
       </button>
     );
   }
   return (
-    <div role="alertdialog" aria-label={`Confirm ${label}`} className="flex flex-col sm:flex-row sm:items-center gap-2 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 p-3 text-sm">
+    <div
+      role="alertdialog"
+      aria-label={`Confirm ${label}`}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") close();
+      }}
+      className="flex flex-col sm:flex-row sm:items-center gap-2 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 p-3 text-sm"
+    >
       <span className="text-amber-900 dark:text-amber-100">{prompt}</span>
       <span className="flex gap-2">
         <button
+          ref={confirmRef}
           type="button"
           className={tone === "danger" ? dangerButton : primaryButton}
           disabled={busy}
           onClick={async () => {
             await onConfirm();
-            setAsking(false);
+            close();
           }}
         >
           {busy ? "Working…" : confirmLabel}
         </button>
-        <button type="button" className={secondaryButton} disabled={busy} onClick={() => setAsking(false)}>
+        <button type="button" className={secondaryButton} disabled={busy} onClick={close}>
           Cancel
         </button>
       </span>

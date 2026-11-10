@@ -84,6 +84,8 @@ test('admin uploads audio directly to storage (no bearer), sees server-validated
   expect(seen.intents).toBe(1)
   expect(seen.finalize).toBe(1)
   expect(seen.put).toEqual([{ authorization: null, cookie: null, contentType: 'audio/mpeg', size: 4096 }])
+  // A cross-origin PUT with Content-Type must be preflighted; require it so the check below is meaningful.
+  expect(seen.preflight.length).toBeGreaterThanOrEqual(1)
   for (const requested of seen.preflight) expect(requested.toLowerCase()).not.toContain('authorization')
 
   await page.getByRole('button', { name: 'Publish resource' }).click()

@@ -8,6 +8,7 @@ import { RESOURCE_TYPES, STORAGE_STATUS_LABELS } from "../constants.js";
 import { deleteResource, getEvent, getResource, publishResource, unpublishResource, updateResource } from "../dawahAdminService.js";
 import { adminErrorMessage, describeAdminError } from "../errors.js";
 import { useLoad } from "../hooks.js";
+import { useAudioUpload } from "../useAudioUpload.js";
 import { formatBytes, formatDuration, formatLagos } from "../time.js";
 
 function TitleForm({ resource, eventId }) {
@@ -59,6 +60,9 @@ function ResourceDetail({ eventId, resourceId }) {
   const [notice, setNotice] = useState(location.state?.notice ?? null);
 
   const resource = resourceState.data;
+  // Owned here (not in the panel) so state actions can be blocked while an upload runs.
+  const upload = useAudioUpload({ eventId, resourceId, resource, onResourceChange: resourceState.reload });
+  const uploading = upload.busy;
   if (resourceState.loading && !resource) return <Loading label="Loading resource…" />;
   if (resourceState.error) return <ErrorState error={resourceState.error} onRetry={resourceState.reload} title="Could not load this resource" />;
 
@@ -114,7 +118,7 @@ function ResourceDetail({ eventId, resourceId }) {
       </Card>
 
       {isAudio ? (
-        <AudioUploadPanel eventId={eventId} resource={resource} onResourceChange={resourceState.reload} />
+        <AudioUploadPanel resource={resource} upload={upload} />
       ) : (
         <Card>
           <p className="text-sm text-gray-600 dark:text-gray-400">This {RESOURCE_TYPES[resource.type] ?? "resource"} is managed in a later release. Only its state can be changed here.</p>
@@ -145,6 +149,7 @@ function ResourceDetail({ eventId, resourceId }) {
         {event && event.status !== "published" && !published && (
           <p className="mt-2 text-sm text-amber-800 dark:text-amber-300">The event is {event.status}. Publish the event before publishing this resource.</p>
         )}
+        {uploading && <p className="mt-2 text-sm text-amber-800 dark:text-amber-300">An upload is in progress. Publication actions are unavailable until it finishes or is cancelled.</p>}
         <div className="mt-3 flex flex-wrap gap-2">
           {published ? (
             <ConfirmAction
@@ -152,10 +157,11 @@ function ResourceDetail({ eventId, resourceId }) {
               confirmLabel="Unpublish"
               prompt="Hide this resource from readers?"
               busy={busy}
+              disabled={uploading}
               onConfirm={() => run(() => unpublishResource(eventId, resourceId), "Resource unpublished.")}
             />
           ) : (
-            <button type="button" className={primaryButton} disabled={busy} onClick={() => run(() => publishResource(eventId, resourceId), "Resource published.")}>
+            <button type="button" className={primaryButton} disabled={busy || uploading} onClick={() => run(() => publishResource(eventId, resourceId), "Resource published.")}>
               {resource.status === "unpublished" ? "Republish resource" : "Publish resource"}
             </button>
           )}
@@ -168,6 +174,7 @@ function ResourceDetail({ eventId, resourceId }) {
               prompt="Delete this resource and its uploaded audio?"
               tone="danger"
               busy={busy}
+              disabled={uploading}
               onConfirm={() => run(() => deleteResource(eventId, resourceId), "Resource deleted.", () => navigate(`/admin/events/${eventId}`))}
             />
           )}
