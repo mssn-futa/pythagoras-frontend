@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { listArchive, listUpcomingEvents, PAGE_SIZE } from '../api/dawahPublicService.js'
 import ArchiveFilters from '../components/ArchiveFilters.jsx'
@@ -61,6 +62,12 @@ export default function ArchivePage() {
   const filters = useMemo(() => readFilters(params), [params])
   const key = JSON.stringify(filters)
   const { loading, data, error, reload } = useRemote(() => listArchive(filters), key)
+  // Out-of-range page is a 404 from the API: fall back to page 1 instead of a dead end.
+  const pageOutOfRange = error?.status === 404 && filters.page > 1
+  useEffect(() => {
+    if (pageOutOfRange) setParams(toParams({ ...filters, page: 1 }), { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageOutOfRange])
   const filtered = Boolean(filters.search || filters.speaker || filters.category || filters.dateFrom || filters.dateTo)
 
   const apply = (next) => setParams(toParams({ ...next, page: 1 }))
@@ -81,8 +88,8 @@ export default function ArchivePage() {
       <ArchiveFilters key={key} values={{ ...EMPTY, ...filters }} onApply={apply} onClear={() => setParams({})} />
 
       <section aria-label="Archive results">
-        {loading && <LoadingState label="Loading archive…" />}
-        {error && <ErrorState error={error} onRetry={reload} title="The archive could not be loaded" />}
+        {(loading || pageOutOfRange) && <LoadingState label="Loading archive…" />}
+        {error && !pageOutOfRange && <ErrorState error={error} onRetry={reload} title="The archive could not be loaded" />}
         {data && data.results.length === 0 && (
           <EmptyState title={filtered ? 'No matching recordings' : 'No recordings published yet'}>
             {filtered ? 'Try different filters or clear them.' : 'Check back soon.'}

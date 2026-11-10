@@ -64,6 +64,8 @@ describe('public service', () => {
     expect(isPlayableAudio(mapResource(audio(1, { storage_status: 'pending' })))).toBe(false)
     expect(isPlayableAudio(mapResource(audio(1, { media_url: 'http://x.test/a.mp3' })))).toBe(false)
     expect(isPlayableAudio(mapResource(audio(1, { type: 'vid' })))).toBe(false)
+    // DAWAH-01 before DAWAH-02: storage_status none, media_url null, playback null
+    expect(isPlayableAudio(mapResource(audio(1, { storage_status: 'none', media_url: null, playback: null })))).toBe(false)
   })
 
   test('displays instants in Africa/Lagos', () => {
@@ -153,6 +155,18 @@ describe('archive page', () => {
     expect(await screen.findByRole('link', { name: 'Patience 8' })).toBeInTheDocument()
   })
 
+  test('an out-of-range page (404) falls back to page 1 instead of a dead end', async () => {
+    const h = serve({
+      '/dawah/archive/': ({ request }) =>
+        new URL(request.url).searchParams.get('page') === '9' ? fail(404, 'NOT_FOUND', 'Invalid page.') : ok(page([audio(8)])),
+    })
+    render(<TestApp path="/dawah?page=9" />)
+    expect(await screen.findByRole('link', { name: 'Patience 8' })).toBeInTheDocument()
+    expect(screen.getByTestId('location')).toHaveTextContent('/dawah')
+    expect(screen.getByTestId('location').textContent).not.toContain('page=9')
+    expect(h.calls.filter((c) => c.path === '/dawah/archive/').length).toBeGreaterThanOrEqual(2)
+  })
+
   test('network failure shows a connectivity message', async () => {
     serve({ '/dawah/archive/': () => HttpResponse.error() })
     render(<TestApp path="/dawah" />)
@@ -181,7 +195,7 @@ describe('archive page', () => {
 
 describe('event and content detail', () => {
   test('event detail deep link shows event info (Lagos time) and a player per audio resource', async () => {
-    serve({ '/dawah/events/:id/resources/': () => ok(page([audio(8), audio(9), audio(10, { type: 'doc' })])) })
+    serve({ '/dawah/events/:id/': () => ok({ ...event, resources: [audio(8), audio(9), audio(10, { type: 'doc' })] }) })
     render(<TestApp path="/dawah/events/3" />)
     expect(await screen.findByRole('heading', { name: 'Friday khutbah' })).toBeInTheDocument()
     expect(screen.getByText(/10 Oct 2026/)).toBeInTheDocument()
@@ -198,7 +212,7 @@ describe('event and content detail', () => {
   })
 
   test('event with no recordings shows an empty state', async () => {
-    serve({ '/dawah/events/:id/resources/': () => ok(page([])) })
+    serve({ '/dawah/events/:id/': () => ok({ ...event, resources: [] }) })
     render(<TestApp path="/dawah/events/3" />)
     expect(await screen.findByText('No recordings for this event yet')).toBeInTheDocument()
   })

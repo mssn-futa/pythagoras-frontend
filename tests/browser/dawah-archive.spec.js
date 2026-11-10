@@ -60,8 +60,7 @@ async function mockPublicApi(page) {
     }
     if (url.pathname === '/dawah/events/') return json(route, paged([]))
     if (url.pathname === '/dawah/resources/8/') return json(route, resource)
-    if (url.pathname === '/dawah/events/3/') return json(route, eventPayload)
-    if (url.pathname === '/dawah/events/3/resources/') return json(route, paged([resource]))
+    if (url.pathname === '/dawah/events/3/') return json(route, { ...eventPayload, resources: [resource] })
     return route.fulfill({ status: 404, headers: cors, contentType: 'application/json', body: JSON.stringify({ success: false, data: { code: 'NOT_FOUND' }, message: 'Not found.' }) })
   })
 

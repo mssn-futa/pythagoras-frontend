@@ -1,5 +1,5 @@
 import { Link, useParams } from 'react-router-dom'
-import { getEvent, listEventResources } from '../api/dawahPublicService.js'
+import { getEvent } from '../api/dawahPublicService.js'
 import PlayableResource from '../components/PlayableResource.jsx'
 import { EmptyState, ErrorState, LoadingState } from '../components/States.jsx'
 import { formatDateTime } from '../lib/format.js'
@@ -12,8 +12,7 @@ export default function EventDetailPage() {
   const { loading, data, error, reload } = useRemote(
     async () => {
       const event = await getEvent(id)
-      const resources = await listEventResources(id)
-      return { event, resources: resources.results.filter((resource) => resource.type === 'aud') }
+      return { event, resources: event.resources.filter((resource) => resource.type === 'aud') }
     },
     `event-${id}`,
   )

@@ -46,8 +46,7 @@ export function publicHandlers(handlers = {}) {
     list: [
       route('/dawah/archive/', () => ok(page([audio(8), audio(9)]))),
       route('/dawah/events/', () => ok(page([]))),
-      route('/dawah/events/:id/', () => ok(event)),
-      route('/dawah/events/:id/resources/', () => ok(page([audio(8)]))),
+      route('/dawah/events/:id/', () => ok({ ...event, resources: [audio(8)] })),
       route('/dawah/resources/:id/', () => ok(audio(8))),
     ],
   }

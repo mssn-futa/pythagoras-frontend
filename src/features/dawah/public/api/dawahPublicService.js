@@ -100,16 +100,16 @@ export async function listUpcomingEvents({ page = 1, pageSize = 5 } = {}) {
   return { ...result, results: result.results.filter(isPublished) }
 }
 
+/**
+ * Event detail already embeds reader-visible `resources[]` (DAWAH-01 contract),
+ * so one request serves the page; the separate resources list is not needed.
+ */
 export async function getEvent(id) {
-  const event = mapEvent(await publicGet(`/dawah/events/${encodeURIComponent(id)}/`))
+  const raw = await publicGet(`/dawah/events/${encodeURIComponent(id)}/`)
+  const event = mapEvent(raw)
   if (!isPublished(event)) throw notFound()
-  return event
-}
-
-export async function listEventResources(eventId) {
-  const data = await publicGet(`/dawah/events/${encodeURIComponent(eventId)}/resources/`, { page_size: 100 })
-  const result = mapPage(data, mapResource)
-  return { ...result, results: result.results.filter(isPublished) }
+  const resources = (Array.isArray(raw?.resources) ? raw.resources : []).map(mapResource).filter(isPublished)
+  return { ...event, resources }
 }
 
 export async function getResource(id) {
