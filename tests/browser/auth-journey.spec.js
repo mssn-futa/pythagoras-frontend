@@ -2,7 +2,6 @@ import { test, expect } from './test.js'
 
 // Synthetic, test-only API shaped like the frozen D1 examples.
 const API = 'https://api.pythagoras.test'
-const APP_ORIGIN = 'http://127.0.0.1:4179'
 const student = {
   id: 1,
   email: 'student@example.test',
@@ -15,22 +14,23 @@ const student = {
   is_active: true,
 }
 
-const cors = {
-  'Access-Control-Allow-Origin': APP_ORIGIN,
+// Echo the page's own origin so the spec works on whatever port the harness serves.
+const corsFor = (route) => ({
+  'Access-Control-Allow-Origin': route.request().headers().origin ?? '',
   'Access-Control-Allow-Headers': 'Authorization, Content-Type, Accept',
   'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
-}
+})
 
 /** Fulfills /accounts/* like PLAT-03 would, recording each non-preflight call. */
 async function mockAccountsApi(page) {
   const calls = []
   let refreshCount = 0
   const reply = (route, status, body) =>
-    route.fulfill({ status, headers: cors, contentType: 'application/json', body: JSON.stringify(body) })
+    route.fulfill({ status, headers: corsFor(route), contentType: 'application/json', body: JSON.stringify(body) })
 
   await page.route(`${API}/accounts/**`, async (route) => {
     const request = route.request()
-    if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors })
+    if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: corsFor(route) })
     const path = new URL(request.url()).pathname
     const body = request.postDataJSON?.() ?? null
     const auth = (await request.allHeaders()).authorization ?? null
@@ -53,7 +53,7 @@ async function mockAccountsApi(page) {
       }
       return reply(route, 200, { success: true, data: student, message: 'OK.' })
     }
-    if (path === '/accounts/logout/') return route.fulfill({ status: 204, headers: cors })
+    if (path === '/accounts/logout/') return route.fulfill({ status: 204, headers: corsFor(route) })
     return reply(route, 404, { success: false, data: { code: 'NOT_FOUND' }, message: 'Not found.' })
   })
   return { calls, count: (path) => calls.filter((call) => call.path === path).length }
