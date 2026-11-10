@@ -65,6 +65,59 @@ describe('session restoration', () => {
     expect(rec.count('/accounts/refresh/')).toBe(1)
   })
 
+  test.each([
+    ['a network failure on refresh', 'refresh', () => HttpResponse.error()],
+    ['a 503 on refresh', 'refresh', () => fail(503, 'SERVICE_UNAVAILABLE', 'Service unavailable.')],
+    ['a 429 on refresh', 'refresh', () => fail(429, 'THROTTLED', 'Too many requests.')],
+    ['a 500 on current user', 'me', () => fail(500, 'SERVER_ERROR', 'Internal error.')],
+  ])('%s keeps the stored session and offers a retry', async (_label, stage, respond) => {
+    const rec = recorder()
+    const [refresh, me] = sessionHandlers(rec)
+    if (stage === 'refresh') server.use(http.post(url('/accounts/refresh/'), respond))
+    else server.use(refresh, http.get(url('/accounts/me/'), respond))
+    storeRefreshToken('refresh-1')
+    const history = []
+    render(<TestApp path="/profile" history={history} />)
+
+    expect(await screen.findByRole('heading', { name: "We couldn't restore your session" })).toBeVisible()
+    expect(location()).toBe('/profile')
+    expect(history).not.toContain('/sign-in?next=%2Fprofile')
+    expect(sessionStorage.getItem(REFRESH_STORAGE_KEY)).not.toBeNull()
+
+    server.resetHandlers(refresh, me)
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByRole('heading', { name: 'Amina Yusuf' })).toBeVisible()
+    expect(location()).toBe('/profile')
+  })
+
+  test('signing out from the restore-failure screen clears the session', async () => {
+    server.use(
+      http.post(url('/accounts/refresh/'), () => HttpResponse.error()),
+      http.post(url('/accounts/logout/'), () => HttpResponse.error()),
+    )
+    storeRefreshToken('refresh-1')
+    render(<TestApp path="/profile" />)
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Sign out' }))
+    expect(await screen.findByText('You have signed out.')).toBeVisible()
+    expect(location()).toBe('/sign-in')
+    expect(sessionStorage.getItem(REFRESH_STORAGE_KEY)).toBeNull()
+  })
+
+  test('a 401 on current user during restoration clears the session without another refresh', async () => {
+    const rec = recorder()
+    const [refresh] = sessionHandlers(rec)
+    server.use(refresh, http.get(url('/accounts/me/'), async ({ request }) => {
+      await rec.record(request)
+      return fail(401, 'NOT_AUTHENTICATED', 'Authentication required.')
+    }))
+    storeRefreshToken()
+    render(<TestApp path="/profile" />)
+    expect(await screen.findByRole('heading', { name: 'Welcome back to Pythagoras' })).toBeVisible()
+    expect(sessionStorage.getItem(REFRESH_STORAGE_KEY)).toBeNull()
+    expect(rec.count('/accounts/refresh/')).toBe(1)
+    expect(rec.count('/accounts/me/')).toBe(1)
+  })
+
   test('an inactive account (403 on current user) is not restored', async () => {
     const rec = recorder()
     const [refresh] = sessionHandlers(rec)
