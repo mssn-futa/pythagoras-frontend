@@ -1,8 +1,9 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http } from 'msw'
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { buildSignInPath, getSafeReturnPath } from '../../src/features/auth/returnPath.js'
+import { hasRole, isAdmin } from '../../src/features/auth/roles.js'
 import { server } from '../mocks/server.js'
 import { admin, ok, recorder, resetSession, sessionHandlers, storeRefreshToken, student, url, useApiOrigin } from '../fixtures/auth.js'
 import { TestApp } from '../fixtures/TestApp.jsx'
@@ -46,6 +47,13 @@ describe('return destination validation', () => {
     'profile',
     '/sign-in',
     '/sign-up/',
+    '/.//evil.example',
+    '/%2e//evil.example',
+    '/%2E%2E//evil.example',
+    '/a/..//evil.example',
+    '/a/../..//evil.example',
+    '/./profile',
+    '/profile/..',
     '',
     null,
     undefined,
@@ -54,6 +62,14 @@ describe('return destination validation', () => {
     expect(getSafeReturnPath(value)).toBeNull()
   })
 
+  test.each(['/.//evil.example', '/%2e//evil.example', '/a/..//evil.example'])(
+    'dot-segment destination %s cannot reach navigation', async (next) => {
+      render(<TestApp path={`/sign-in?next=${encodeURIComponent(next)}`} />)
+      await signInAs(student)
+      expect(await screen.findByText(/Assalamu Alaykum/)).toBeVisible()
+      expect(location()).toBe('/')
+    })
+
   test('builds a sign-in path carrying only safe destinations', () => {
     expect(buildSignInPath({ pathname: '/profile', search: '?x=1', hash: '' })).toBe('/sign-in?next=%2Fprofile%3Fx%3D1')
     expect(buildSignInPath({ pathname: '/', search: '', hash: '' })).toBe('/sign-in')
@@ -61,7 +77,50 @@ describe('return destination validation', () => {
   })
 })
 
+describe('roles', () => {
+  test('admin authority comes from role=admin only, never is_staff/is_superuser', () => {
+    expect(isAdmin({ ...student, is_staff: true, is_superuser: true })).toBe(false)
+    expect(isAdmin({ id: 9, is_staff: true })).toBe(false)
+    expect(isAdmin({ ...admin, is_active: false })).toBe(false)
+    expect(isAdmin(admin)).toBe(true)
+    expect(hasRole(student, 'student')).toBe(true)
+  })
+
+  test('a staff student is still blocked from admin routes', async () => {
+    restoreAs({ ...student, is_staff: true, is_superuser: true })
+    render(<TestApp path="/admin" />)
+    expect(await screen.findByRole('heading', { name: 'Access denied' })).toBeVisible()
+  })
+})
+
 describe('route guards', () => {
+  test.each([
+    ['RequireAuth', '/profile', student, 'Amina Yusuf'],
+    ['RequireAdmin', '/admin/students', admin, null],
+  ])('%s keeps the protected location while restoration is pending', async (_guard, path, user, heading) => {
+    const rec = recorder()
+    let releaseMe
+    const meGate = new Promise((resolve) => { releaseMe = resolve })
+    const [refresh] = sessionHandlers(rec, user)
+    server.use(refresh, http.get(url('/accounts/me/'), async ({ request }) => {
+      await rec.record(request)
+      await meGate
+      return ok(user)
+    }))
+    storeRefreshToken()
+    const history = []
+    render(<TestApp path={path} history={history} />)
+
+    await vi.waitFor(() => expect(rec.count('/accounts/me/')).toBe(1))
+    expect(screen.getByText('Checking your session…')).toBeVisible()
+    expect(location()).toBe(path)
+    releaseMe()
+    if (heading) expect(await screen.findByRole('heading', { name: heading })).toBeVisible()
+    else expect(await screen.findByRole('link', { name: 'Students' })).toBeVisible()
+    expect(location()).toBe(path)
+    expect(history.every((entry) => entry === path)).toBe(true)
+  })
+
   test('unauthenticated visitors are sent to sign-in with the return path, then back after sign-in', async () => {
     render(<TestApp path="/profile?tab=details" />)
     expect(await screen.findByRole('heading', { name: 'Welcome back to Pythagoras' })).toBeVisible()

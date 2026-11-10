@@ -11,16 +11,23 @@ function hasControlCharacter(value) {
   return false;
 }
 
+// "." / ".." path segments (literal or percent-encoded) can normalize into
+// "//host"; reject them outright rather than trusting normalization.
+function hasDotSegment(value) {
+  const path = value.split(/[?#]/, 1)[0];
+  return /%2e/i.test(value) || /(^|\/)\.{1,2}(\/|$)/.test(path);
+}
+
 /**
  * Accepts only an in-app path ("/profile?tab=1#x"). Rejects absolute,
- * protocol-relative ("//host"), backslash, scheme ("javascript:") and
- * control-character values, and auth pages (which would loop). Returns the
- * normalized path or null.
+ * protocol-relative ("//host"), backslash, scheme ("javascript:"),
+ * control-character and dot-segment values, and auth pages (which would
+ * loop). The normalized OUTPUT is validated again. Returns it or null.
  */
 export function getSafeReturnPath(value) {
   if (typeof value !== "string" || value.length === 0 || value.length > 2048) return null;
   if (!value.startsWith("/") || value.startsWith("//")) return null;
-  if (/[\\\s]/.test(value) || hasControlCharacter(value)) return null;
+  if (/[\\\s]/.test(value) || hasControlCharacter(value) || hasDotSegment(value)) return null;
   let url;
   try {
     const origin = window.location.origin;
@@ -30,7 +37,9 @@ export function getSafeReturnPath(value) {
     return null;
   }
   if (AUTH_PAGES.has(url.pathname.replace(/\/+$/, "") || "/")) return null;
-  return `${url.pathname}${url.search}${url.hash}`;
+  const result = `${url.pathname}${url.search}${url.hash}`;
+  if (!result.startsWith("/") || result.startsWith("//") || result.includes("\\")) return null;
+  return result;
 }
 
 /** Sign-in URL carrying a validated return destination, if any. */
