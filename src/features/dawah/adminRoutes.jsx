@@ -1,15 +1,24 @@
+import ContentPage from "./admin/pages/ContentPage.jsx";
+import EventDetailPage from "./admin/pages/EventDetailPage.jsx";
+import EventFormPage from "./admin/pages/EventFormPage.jsx";
+import EventsListPage from "./admin/pages/EventsListPage.jsx";
+import ResourceFormPage from "./admin/pages/ResourceFormPage.jsx";
+import ResourcePage from "./admin/pages/ResourcePage.jsx";
+
 /**
  * Da'wah admin route slot (D2: /admin/events, /admin/content, ...).
  *
- * Owned by the domain work packages; PLAT-04 owns where it is mounted (src/App.jsx).
- * Mounted at: /admin/* inside AdminLayout, behind RequireAdmin.
- * Entries are react-router route objects with RELATIVE paths, e.g.
- *   { path: "events", element: <EventsPage /> }
- *   { path: "events/:id", element: <EventDetail /> }
- *   { path: "content", children: [{ index: true, element: <ContentList /> }] }
- * Import only pages that exist in this repository. Keep the list empty until
- * a feature is really available (D0: unavailable features stay unmounted).
+ * Mounted by src/App.jsx at /admin/* inside AdminLayout, behind RequireAdmin
+ * (admin role only); paths are relative to /admin. Navigation entries are
+ * composed by PLAT-07, not here.
  */
-export const dawahAdminRoutes = [];
+export const dawahAdminRoutes = [
+  { path: "events", element: <EventsListPage /> },
+  { path: "events/new", element: <EventFormPage /> },
+  { path: "events/:eventId", element: <EventDetailPage /> },
+  { path: "events/:eventId/resources/new", element: <ResourceFormPage /> },
+  { path: "events/:eventId/resources/:resourceId", element: <ResourcePage /> },
+  { path: "content", element: <ContentPage /> },
+];
 
 export default dawahAdminRoutes;
