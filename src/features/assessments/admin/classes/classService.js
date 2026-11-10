@@ -135,9 +135,9 @@ export function buildModulePatch(saved, { title, body, order, resourceIds }) {
 const pageParams = ({ page, pageSize }) => ({ ...(page ? { page } : {}), ...(pageSize ? { page_size: pageSize } : {}) });
 
 // --- classes -----------------------------------------------------------------------------------
-export const listClasses = async ({ status, page, pageSize } = {}) =>
+export const listClasses = async ({ status, page, pageSize, signal } = {}) =>
   // ASSUMPTION: admin catalog accepts `status` (D3: "admin drafts"; mirrors the quiz list), `page`, `page_size`.
-  mapPage(await api.get("/quiz/classes/", { params: { ...(status ? { status } : {}), ...pageParams({ page, pageSize }) } }), mapClass);
+  mapPage(await api.get("/quiz/classes/", { params: { ...(status ? { status } : {}), ...pageParams({ page, pageSize }) }, signal }), mapClass);
 export const getClass = async (id) => mapClass(await api.get(`/quiz/classes/${id}/`));
 export const createClass = async (payload) => mapClass(await api.post("/quiz/classes/", payload));
 export const updateClass = async (id, payload) => mapClass(await api.patch(`/quiz/classes/${id}/`, payload));
@@ -174,9 +174,9 @@ export const unpublishModule = (classId, moduleId) => api.post(`/quiz/classes/${
 export const reorderModules = (classId, moduleIds) => api.post(`/quiz/classes/${classId}/modules/reorder/`, { module_ids: moduleIds });
 
 // --- resource picker (D2 archive: published, locally visible, ready resources only) ---------------
-export const searchResources = async ({ search, type, page, pageSize = 20 } = {}) =>
+export const searchResources = async ({ search, type, page, pageSize = 20, signal } = {}) =>
   // ASSUMPTION: GET /dawah/archive/ (D2) items carry the resource id, title, type and parent event summary.
-  mapPage(await api.get("/dawah/archive/", { params: { ...(search ? { search } : {}), ...(type ? { type } : {}), ...pageParams({ page, pageSize }) } }), mapResourceRef);
+  mapPage(await api.get("/dawah/archive/", { params: { ...(search ? { search } : {}), ...(type ? { type } : {}), ...pageParams({ page, pageSize }) }, signal }), mapResourceRef);
 
 // --- roster ------------------------------------------------------------------------------------
 export const listEnrollments = async (classId, { status, search, page, pageSize } = {}) =>

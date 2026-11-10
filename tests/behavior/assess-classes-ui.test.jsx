@@ -1,7 +1,8 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http } from 'msw'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { apiClient } from '../../src/services/api'
 import { server } from '../mocks/server.js'
 import { admin, fail, ok, recorder, resetSession, sessionHandlers, storeRefreshToken, student, url, useApiOrigin } from '../fixtures/auth.js'
 import { TestApp } from '../fixtures/TestApp.jsx'
@@ -10,7 +11,9 @@ import { arabicClass, createClassBackend, enrollmentRow, moduleRecord, resourceR
 
 let active = []
 beforeEach(useApiOrigin)
-afterEach(() => {
+afterEach(async () => {
+  // Let any picker/list load finish so no request outlives its test (unmount also aborts them).
+  if (screen.queryAllByTestId('location').length) await waitFor(() => expect(screen.queryByText(/^Loading/)).toBeNull())
   resetSession()
   // Every request body must match the frozen contract shapes (unknown keys rejected).
   for (const backend of active) expect(backend.state.violations).toEqual([])
@@ -431,6 +434,60 @@ describe('modules', () => {
     expect(await screen.findByLabelText('Title')).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Save module' })).toBeDisabled()
     expect(screen.queryByLabelText('Search resources')).toBeNull()
+  })
+})
+
+/** Records the AbortSignal the shared client was given for requests to `path` (removed after each test). */
+function watchSignals(path) {
+  const signals = []
+  const id = apiClient.interceptors.request.use((config) => {
+    if (String(config.url).includes(path)) signals.push(config.signal)
+    return config
+  })
+  cleanups.push(() => apiClient.interceptors.request.eject(id))
+  return signals
+}
+const cleanups = []
+
+describe('in-flight loads are abandoned on unmount', () => {
+  afterEach(() => cleanups.splice(0).forEach((fn) => fn()))
+
+  test('the resource picker aborts its pending search when the page unmounts', async () => {
+    const backend = createClassBackend({ classes: [arabicClass()], resources })
+    const signals = watchSignals('/dawah/archive/')
+    let started
+    const reached = new Promise((resolve) => { started = resolve })
+    open('/admin/classes/2/modules/new', backend)
+    server.use(
+      http.get(url('/dawah/archive/'), async () => {
+        started()
+        await new Promise((resolve) => setTimeout(resolve, 300))
+        return ok({ count: 0, next: null, previous: null, results: [] })
+      }),
+    )
+    await reached
+    cleanup() // leave the page with the search still pending
+    await waitFor(() => expect(signals.some((signal) => signal?.aborted)).toBe(true))
+    await new Promise((resolve) => setTimeout(resolve, 350)) // the pending response arrives after unmount and must not matter
+  })
+
+  test('the related-class selector aborts its pending class request on unmount', async () => {
+    const quizzes = createQuizBackend({ quizzes: [draftQuiz()] })
+    const signals = watchSignals('/quiz/classes/')
+    let started
+    const reached = new Promise((resolve) => { started = resolve })
+    open('/admin/quizzes/5', quizzes)
+    server.use(
+      http.get(url('/quiz/classes/'), async () => {
+        started()
+        await new Promise((resolve) => setTimeout(resolve, 300))
+        return ok({ count: 0, next: null, previous: null, results: [] })
+      }),
+    )
+    await reached
+    cleanup()
+    await waitFor(() => expect(signals.some((signal) => signal?.aborted)).toBe(true))
+    await new Promise((resolve) => setTimeout(resolve, 350)) // the pending response arrives after unmount and must not matter
   })
 })
 
