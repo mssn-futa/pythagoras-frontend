@@ -67,8 +67,15 @@ export function createQuizBackend({ quizzes = [], results = {}, classes = [] } =
     }
     return null
   }
+  // Server-side lock: content is editable only for drafts with no attempts/submissions.
+  // Internal test fields: has_history (attempts exist), omit_content_editable (simulate an older backend).
+  const editable = (quiz) => quiz.status === 'draft' && !quiz.has_history
+  const view = (quiz) => {
+    const { has_history: _history, omit_content_editable: omit, ...rest } = quiz
+    return omit ? rest : { ...rest, content_editable: editable(quiz) }
+  }
   const withSummary = (quiz) => {
-    const { questions, ...rest } = quiz
+    const { questions, ...rest } = view(quiz)
     return { ...rest, question_count: questions.length, total_points: questions.reduce((sum, q) => sum + q.points, 0) }
   }
   const immutable = () => fail(409, 'QUIZ_IMMUTABLE', 'Published quizzes cannot be edited.')
@@ -108,18 +115,18 @@ export function createQuizBackend({ quizzes = [], results = {}, classes = [] } =
       const blocked = guard(call)
       if (blocked) return blocked
       const quiz = find(params.id)
-      return quiz ? ok(quiz) : fail(404, 'NOT_FOUND', 'Not found.')
+      return quiz ? ok(view(quiz)) : fail(404, 'NOT_FOUND', 'Not found.')
     }),
     http.patch(url('/quiz/quizzes/:id/'), async ({ request, params }) => {
       const call = await record(request, params)
       const blocked = guard(call)
       if (blocked) return blocked
       const quiz = find(params.id)
-      if (quiz.status !== 'draft' && Object.keys(call.body).some((key) => !['title', 'description'].includes(key))) return immutable()
-      const bad = quizBodyViolation(call.body, { draft: quiz.status === 'draft', create: false })
+      if (!editable(quiz) && Object.keys(call.body).some((key) => !['title', 'description'].includes(key))) return immutable()
+      const bad = quizBodyViolation(call.body, { draft: editable(quiz), create: false })
       if (bad) return violation(bad)
       Object.assign(quiz, call.body)
-      return ok(quiz, 'Saved.')
+      return ok(view(quiz), 'Saved.')
     }),
     http.delete(url('/quiz/quizzes/:id/'), async ({ request, params }) => {
       const call = await record(request, params)
@@ -133,7 +140,7 @@ export function createQuizBackend({ quizzes = [], results = {}, classes = [] } =
       const blocked = guard(call)
       if (blocked) return blocked
       const quiz = find(params.id)
-      if (quiz.status !== 'draft') return immutable()
+      if (!editable(quiz)) return immutable()
       const bad = questionBodyViolation(call.body)
       if (bad) return violation(bad)
       const question = {
@@ -149,7 +156,7 @@ export function createQuizBackend({ quizzes = [], results = {}, classes = [] } =
       const blocked = guard(call)
       if (blocked) return blocked
       const quiz = state.quizzes.find((candidate) => candidate.questions.some((q) => String(q.id) === params.id))
-      if (quiz.status !== 'draft') return immutable()
+      if (!editable(quiz)) return immutable()
       const question = quiz.questions.find((q) => String(q.id) === params.id)
       const bad = questionBodyViolation(call.body)
       if (bad) return violation(bad)
@@ -161,6 +168,8 @@ export function createQuizBackend({ quizzes = [], results = {}, classes = [] } =
       const call = await record(request, params)
       const blocked = guard(call)
       if (blocked) return blocked
+      const owner = state.quizzes.find((candidate) => candidate.questions.some((q) => String(q.id) === params.id))
+      if (owner && !editable(owner)) return immutable()
       for (const quiz of state.quizzes) quiz.questions = quiz.questions.filter((q) => String(q.id) !== params.id)
       return new HttpResponse(null, { status: 204 })
     }),
@@ -171,14 +180,14 @@ export function createQuizBackend({ quizzes = [], results = {}, classes = [] } =
       const quiz = find(params.id)
       quiz.status = 'published'
       quiz.published_at = '2026-10-01T09:00:00Z'
-      return ok(quiz, 'Published.')
+      return ok(view(quiz), 'Published.')
     }),
     http.post(url('/quiz/quizzes/:id/close/'), async ({ request, params }) => {
       const call = await record(request, params)
       const blocked = guard(call)
       if (blocked) return blocked
       find(params.id).status = 'closed'
-      return ok(find(params.id), 'Closed.')
+      return ok(view(find(params.id)), 'Closed.')
     }),
     http.get(url('/quiz/quizzes/:id/submissions/'), async ({ request, params }) => {
       const call = await record(request, params)

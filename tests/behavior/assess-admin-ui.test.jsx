@@ -266,7 +266,7 @@ describe('draft editor', () => {
     backend.find(5).status = 'published' // someone published it in another tab
     backend.find(5).published_at = '2026-10-01T09:00:00Z'
     await actor.click(within(screen.getByRole('form', { name: 'Edit question 1' })).getByRole('button', { name: 'Save question' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent(/published, so its questions/)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/locked \(it is published, or it has recorded attempts or results\)/)
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Add question' })).toBeNull())
     expect(screen.getByText('published')).toBeVisible()
     expect(screen.queryByRole('form', { name: 'Edit question 1' })).toBeNull()
@@ -624,5 +624,66 @@ describe('review fixes', () => {
     await actor.click(screen.getByRole('button', { name: 'Save draft details' }))
     await screen.findByText('Draft saved.')
     expect(backend.callsTo('PATCH', '/quiz/quizzes/5/')[0].body.deadline).toBe('2099-11-01T07:15:00Z')
+  })
+})
+
+describe('content lock (content_editable)', () => {
+  const lockedButtons = ['Add question', 'Edit question 1', 'Delete question 1', 'Delete draft', 'Save draft details']
+
+  test('a draft with recorded attempts is locked with history copy, not "published" copy', async () => {
+    const backend = createQuizBackend({ quizzes: [draftQuiz({ has_history: true })] })
+    open('/admin/quizzes/5', backend)
+    expect(await screen.findByText(/This draft has recorded attempts or results, so its questions/)).toBeVisible()
+    expect(screen.getByText(/Create a new quiz instead/)).toBeVisible()
+    expect(document.body).not.toHaveTextContent('This quiz is published')
+    for (const name of lockedButtons) expect(screen.queryByRole('button', { name })).toBeNull()
+    expect(screen.getByLabelText(/Time limit/)).toBeDisabled()
+    expect(screen.getByLabelText(/Deadline/)).toBeDisabled()
+    expect(screen.getByText('draft')).toBeVisible()
+    expect(screen.getByRole('link', { name: 'View results' })).toBeVisible()
+  })
+
+  test('a locked draft still allows a title/description correction, sent alone', async () => {
+    const backend = createQuizBackend({ quizzes: [draftQuiz({ has_history: true })] })
+    open('/admin/quizzes/5', backend)
+    const actor = userEvent.setup()
+    await actor.type(await screen.findByLabelText('Title'), ' fixed')
+    await actor.click(screen.getByRole('button', { name: 'Save title and description' }))
+    expect(await screen.findByText('Title and description updated.')).toBeVisible()
+    expect(backend.callsTo('PATCH', '/quiz/quizzes/5/')[0].body).toEqual({ title: 'Arabic week 1 fixed', description: 'Weekly assessment' })
+  })
+
+  test('content_editable true on a draft keeps full editing', async () => {
+    const backend = createQuizBackend({ quizzes: [draftQuiz()] })
+    open('/admin/quizzes/5', backend)
+    expect(await screen.findByRole('button', { name: 'Add question' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Edit question 1' })).toBeVisible()
+    expect(screen.queryByText(/recorded attempts/)).toBeNull()
+  })
+
+  test('missing content_editable: draft stays editable, published is locked', async () => {
+    const draft = createQuizBackend({ quizzes: [draftQuiz({ omit_content_editable: true })] })
+    open('/admin/quizzes/5', draft)
+    expect(await screen.findByRole('button', { name: 'Add question' })).toBeVisible()
+  })
+
+  test('missing content_editable on a published quiz is locked', async () => {
+    const backend = createQuizBackend({ quizzes: [published({ omit_content_editable: true })] })
+    open('/admin/quizzes/7', backend)
+    expect(await screen.findByText(/This quiz is published\. Questions/)).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Add question' })).toBeNull()
+    expect(screen.getByLabelText(/Time limit/)).toBeDisabled()
+  })
+
+  test('the lock appearing mid-edit (409) reloads into the locked draft with neutral copy', async () => {
+    const backend = createQuizBackend({ quizzes: [draftQuiz()] })
+    open('/admin/quizzes/5', backend)
+    const actor = userEvent.setup()
+    await actor.click(await screen.findByRole('button', { name: 'Edit question 1' }))
+    backend.find(5).has_history = true // a student attempt was recorded meanwhile
+    await actor.click(within(screen.getByRole('form', { name: 'Edit question 1' })).getByRole('button', { name: 'Save question' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/published, or it has recorded attempts or results/)
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Add question' })).toBeNull())
+    expect(screen.getByText(/This draft has recorded attempts or results/)).toBeVisible()
   })
 })

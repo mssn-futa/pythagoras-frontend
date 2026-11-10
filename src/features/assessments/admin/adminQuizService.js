@@ -47,6 +47,9 @@ export function mapQuiz(raw) {
     description: raw.description ?? "",
     // Unknown or missing status never defaults to draft (fail closed): null means read-only.
     status: STATUSES.includes(raw.status) ? raw.status : null,
+    // Server-authoritative lock: false once published OR once the quiz has any attempt/submission.
+    // Missing flag fails safe: locked unless the quiz is a draft (so an older backend is not broken).
+    contentEditable: typeof raw.content_editable === "boolean" ? raw.content_editable : raw.status === "draft",
     type: raw.type ?? "arabic",
     timeLimit: toInt(raw.time_limit),
     deadline: raw.deadline ?? null,

@@ -92,6 +92,8 @@ function QuizEditor({ id }) {
   const status = isNew ? "draft" : quiz?.status ?? null;
   const unknownStatus = !isNew && status === null; // contract violation: fail closed
   const isDraft = status === "draft";
+  // Grading content is locked when published/closed, or when a draft already has attempts/results.
+  const contentLocked = !isNew && !unknownStatus && !quiz?.contentEditable;
   const dirty = JSON.stringify(form) !== JSON.stringify(savedForm);
 
   function fail(error, formFields = DETAIL_FIELDS, loadOptions) {
@@ -132,7 +134,7 @@ function QuizEditor({ id }) {
         return;
       }
       // Published/closed quizzes accept only the D3 metadata corrections.
-      const payload = isDraft
+      const payload = !contentLocked
         ? buildQuizPayload({
             title: form.title,
             description: form.description,
@@ -143,7 +145,7 @@ function QuizEditor({ id }) {
         : { title: form.title.trim(), description: form.description.trim() };
       await updateQuiz(id, payload);
       await load({ adopt: true });
-      setNotice(isDraft ? "Draft saved." : "Title and description updated.");
+      setNotice(contentLocked ? "Title and description updated." : "Draft saved.");
     } catch (error) {
       const edited = form;
       const described = fail(error, DETAIL_FIELDS, {
@@ -228,7 +230,8 @@ function QuizEditor({ id }) {
   }
 
   const blockers = quiz ? publishBlockers(quiz) : [];
-  const readOnlyGrading = !isNew && !isDraft;
+  const draftWithHistory = contentLocked && isDraft;
+  const readOnlyGrading = contentLocked || unknownStatus;
   const lockAll = unknownStatus;
   const fieldProps = (name) => ({
     "aria-invalid": Boolean(fieldErrors[name]),
@@ -247,7 +250,7 @@ function QuizEditor({ id }) {
           <Link to="/admin/quizzes" className={secondaryButton}>
             All quizzes
           </Link>
-          {!isNew && !isDraft && !unknownStatus && (
+          {!isNew && (!isDraft || contentLocked) && !unknownStatus && (
             <Link to={`/admin/quizzes/${id}/results`} className={primaryButton}>
               View results
             </Link>
@@ -264,7 +267,9 @@ function QuizEditor({ id }) {
       )}
       {readOnlyGrading && !unknownStatus && (
         <Alert tone="info">
-          {status === "published"
+          {draftWithHistory
+            ? "This draft has recorded attempts or results, so its questions, options, points, correct answers, duration, deadline and links can't change. Create a new quiz instead. You can still correct the title and description; saved results are not affected."
+            : status === "published"
             ? "This quiz is published. Questions, options, points, correct answers, duration, deadline and links are locked. You can still correct the title and description; saved results are not affected."
             : "This quiz is closed. It cannot be reopened and its grading content is locked. You can still correct the title and description; saved results are not affected."}
         </Alert>
@@ -344,7 +349,7 @@ function QuizEditor({ id }) {
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
           <button type="submit" className={primaryButton} disabled={saving || lockAll || (!isNew && !dirty)}>
-            {saving ? "Saving..." : isNew ? "Save draft" : isDraft ? "Save draft details" : "Save title and description"}
+            {saving ? "Saving..." : isNew ? "Save draft" : contentLocked || unknownStatus ? "Save title and description" : "Save draft details"}
           </button>
         </div>
       </form>
@@ -355,7 +360,7 @@ function QuizEditor({ id }) {
             <h2 className="text-xl font-semibold text-gray-800">
               Questions ({quiz.questions.length}) <span className="text-base font-normal text-gray-500">· {totalPoints(quiz.questions)} points in total</span>
             </h2>
-            {isDraft && !questionMode && (
+            {isDraft && !contentLocked && !questionMode && (
               <button type="button" className={primaryButton} onClick={() => setQuestionMode({ question: null })}>
                 Add question
               </button>
@@ -401,7 +406,7 @@ function QuizEditor({ id }) {
                       </li>
                     ))}
                   </ul>
-                  {isDraft && !questionMode && (
+                  {isDraft && !contentLocked && !questionMode && (
                     <div className="mt-4 flex flex-col gap-3 sm:flex-row">
                       {!question.legacy && (
                         <button type="button" className={secondaryButton} onClick={() => setQuestionMode({ question })}>
@@ -448,9 +453,11 @@ function QuizEditor({ id }) {
                 </ul>
               )}
               <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-                <button type="button" className={secondaryButton} onClick={() => setConfirm({ kind: "delete" })}>
-                  Delete draft
-                </button>
+                {!contentLocked && (
+                  <button type="button" className={secondaryButton} onClick={() => setConfirm({ kind: "delete" })}>
+                    Delete draft
+                  </button>
+                )}
                 <button type="button" className={primaryButton} disabled={dirty || blockers.length > 0 || Boolean(questionMode)} onClick={() => setConfirm({ kind: "publish" })}>
                   Publish quiz
                 </button>
