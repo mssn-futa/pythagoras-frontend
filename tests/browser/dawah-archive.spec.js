@@ -60,11 +60,11 @@ async function mockPublicApi(page) {
     }
     if (url.pathname === '/dawah/events/') return json(route, paged([]))
     if (url.pathname === '/dawah/resources/8/') return json(route, resource)
-    if (url.pathname === '/dawah/events/3/') return json(route, { ...eventPayload, resources: [resource] })
+    if (url.pathname === '/dawah/events/3/') return json(route, { ...eventPayload, resources: [resource, { ...resource, id: 9, title: 'Gratitude', media_url: MEDIA.replace('-8', '-9') }] })
     return route.fulfill({ status: 404, headers: cors, contentType: 'application/json', body: JSON.stringify({ success: false, data: { code: 'NOT_FOUND' }, message: 'Not found.' }) })
   })
 
-  await page.route(MEDIA, async (route) => {
+  await page.route('https://media.pythagoras.test/*.wav', async (route) => {
     const range = (await route.request().allHeaders()).range
     ranges.push(range ?? null)
     const common = { ...cors, 'Content-Type': 'audio/wav', 'Accept-Ranges': 'bytes' }
@@ -126,7 +126,7 @@ test('anonymous reader finds a recording, plays and seeks it, and a deep link su
 
   await page.goto('/dawah/events/3')
   await expect(page.getByRole('heading', { name: 'Friday khutbah' })).toBeVisible()
-  await expect(page.getByRole('group', { name: /Audio player/ })).toHaveCount(1)
+  await expect(page.getByRole('group', { name: /Audio player/ })).toHaveCount(2)
 
   expect(api.calls.length).toBeGreaterThan(0)
   expect(api.calls.every((call) => call.auth === null)).toBe(true) // public reads: no bearer
@@ -140,4 +140,22 @@ test('a media failure is shown as an error, not as playing', async ({ page }) =>
   await expect(player.getByRole('alert')).toContainText(/unavailable|format/i)
   await expect(player.getByRole('button', { name: 'Play' })).toBeDisabled()
   await expect(player.getByRole('button', { name: 'Retry' })).toBeVisible()
+})
+
+test('starting a second recording on the event page pauses the first', async ({ page }) => {
+  await mockPublicApi(page)
+  await page.goto('/dawah/events/3')
+  const players = page.getByRole('group', { name: /Audio player/ })
+  await expect(players).toHaveCount(2)
+  const paused = (index) => page.evaluate((i) => document.querySelectorAll('audio')[i].paused, index)
+
+  await players.nth(0).getByRole('button', { name: 'Play' }).click()
+  await expect(players.nth(0).getByRole('button', { name: 'Pause' })).toBeVisible()
+  await expect.poll(() => paused(0)).toBe(false)
+
+  await players.nth(1).getByRole('button', { name: 'Play' }).click()
+  await expect(players.nth(1).getByRole('button', { name: 'Pause' })).toBeVisible()
+  await expect(players.nth(0).getByRole('button', { name: 'Play' })).toBeVisible()
+  expect(await paused(0)).toBe(true)
+  await expect.poll(() => paused(1)).toBe(false)
 })

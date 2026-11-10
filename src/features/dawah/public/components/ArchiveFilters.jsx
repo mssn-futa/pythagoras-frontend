@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+const EMPTY_FILTERS = { search: '', speaker: '', category: '', dateFrom: '', dateTo: '' }
 const input =
   'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-[#1F2937] focus:outline-none focus:ring-2 focus:ring-[#2A742F] dark:border-gray-500 dark:bg-gray-700 dark:text-white'
 
@@ -54,6 +55,7 @@ export default function ArchiveFilters({ values, onApply, onClear }) {
           type="button"
           className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium dark:border-gray-500 dark:text-white"
           onClick={() => {
+            setDraft(EMPTY_FILTERS)
             onClear()
           }}
         >

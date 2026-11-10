@@ -107,6 +107,18 @@ describe('archive page', () => {
     expect(archive().page).toBeUndefined()
   })
 
+  test('Clear resets typed-but-unapplied filter text as well', async () => {
+    serve()
+    const user = userEvent.setup()
+    render(<TestApp path="/dawah" />)
+    await screen.findByText('2 recordings')
+    await user.type(screen.getByLabelText('Speaker'), 'typed only')
+    await user.type(screen.getByLabelText('Search'), 'draft text')
+    await user.click(screen.getByRole('button', { name: 'Clear' }))
+    expect(screen.getByLabelText('Speaker')).toHaveValue('')
+    expect(screen.getByLabelText('Search')).toHaveValue('')
+  })
+
   test('pagination requests the next page', async () => {
     const h = serve({ '/dawah/archive/': () => ok(page([audio(8)], 30)) })
     const user = userEvent.setup()
@@ -236,10 +248,14 @@ describe('audio player', () => {
   let play
   let pause
   let load
+  let autoPlaying
   beforeEach(() => {
+    autoPlaying = true
+    // Like a browser: `play` fires at once, `playing` only after data arrives (asynchronously).
     play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(function () {
       Object.defineProperty(this, 'paused', { configurable: true, value: false })
-      fireEvent.playing(this)
+      fireEvent.play(this)
+      if (autoPlaying) setTimeout(() => fireEvent.playing(this), 0)
       return Promise.resolve()
     })
     pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(function () {
@@ -327,13 +343,99 @@ describe('audio player', () => {
     expect(within(player).queryByRole('alert')).toBeNull()
   })
 
-  test('a network media error is described and a rejected play() is not shown as playing', async () => {
+  test('between play() and data arrival the button reads Pause with a loading indicator, and pressing it pauses', async () => {
+    const user = userEvent.setup()
+    autoPlaying = false
+    const { player, el } = await open()
+    await user.click(within(player).getByRole('button', { name: 'Play' }))
+    expect(within(player).getByRole('button', { name: 'Pause' })).toBeInTheDocument()
+    expect(within(player).getByText('Loading audio…')).toBeInTheDocument()
+    await user.click(within(player).getByRole('button', { name: 'Pause' }))
+    expect(pause).toHaveBeenCalled()
+    expect(el.paused).toBe(true)
+    expect(within(player).getByRole('button', { name: 'Play' })).toBeInTheDocument()
+  })
+
+  test('a browser-blocked play() keeps Play enabled with a notice, not an error', async () => {
     const user = userEvent.setup()
     const { player, el } = await open()
     play.mockImplementation(() => Promise.reject(Object.assign(new Error('blocked'), { name: 'NotAllowedError' })))
     await user.click(within(player).getByRole('button', { name: 'Play' }))
-    expect(await within(player).findByRole('alert')).toHaveTextContent('blocked playback')
+    expect(await within(player).findByText(/blocked playback/)).toBeInTheDocument()
+    expect(within(player).queryByRole('alert')).toBeNull()
+    expect(within(player).getByRole('button', { name: 'Play' })).toBeEnabled()
     expect(within(player).queryByRole('button', { name: 'Pause' })).toBeNull()
     expect(el.paused).toBe(true)
+    play.mockImplementation(function () {
+      Object.defineProperty(this, 'paused', { configurable: true, value: false })
+      fireEvent.play(this)
+      return Promise.resolve()
+    })
+    await user.click(within(player).getByRole('button', { name: 'Play' }))
+    expect(within(player).getByRole('button', { name: 'Pause' })).toBeInTheDocument()
+    expect(within(player).queryByText(/blocked playback/)).toBeNull()
   })
+
+  test('another failure to start playback is an error', async () => {
+    const user = userEvent.setup()
+    const { player } = await open()
+    play.mockImplementation(() => Promise.reject(Object.assign(new Error('x'), { name: 'NotSupportedError' })))
+    await user.click(within(player).getByRole('button', { name: 'Play' }))
+    expect(await within(player).findByRole('alert')).toHaveTextContent('unavailable or its format is not supported')
+  })
+
+  test('Retry after a mid-recording error resumes from the previous position', async () => {
+    const user = userEvent.setup()
+    const { player, el } = await open()
+    setDuration(el, 1800)
+    fireEvent.change(within(player).getByRole('slider', { name: 'Seek' }), { target: { value: '600' } })
+    Object.defineProperty(el, 'error', { configurable: true, value: { code: 2 } })
+    fireEvent.error(el)
+    expect(within(player).getByRole('alert')).toHaveTextContent('network problem')
+    el.currentTime = 0 // a reload resets the element
+    await user.click(within(player).getByRole('button', { name: 'Retry' }))
+    expect(load).toHaveBeenCalled()
+    fireEvent.loadedMetadata(el)
+    expect(el.currentTime).toBe(600)
+  })
+})
+
+describe('single active player', () => {
+  test('starting one recording pauses the other on the event page', async () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(function () {
+      Object.defineProperty(this, 'paused', { configurable: true, value: false })
+      fireEvent.play(this)
+      return Promise.resolve()
+    })
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(function () {
+      Object.defineProperty(this, 'paused', { configurable: true, value: true })
+      fireEvent.pause(this)
+    })
+    const user = userEvent.setup()
+    serve({ '/dawah/events/:id/': () => ok({ ...event, resources: [audio(8), audio(9)] }) })
+    const view = render(<TestApp path="/dawah/events/3" />)
+    const players = await screen.findAllByRole('group', { name: /Audio player/ })
+    const [first, second] = view.container.querySelectorAll('audio')
+    await user.click(within(players[0]).getByRole('button', { name: 'Play' }))
+    expect(first.paused).toBe(false)
+    await user.click(within(players[1]).getByRole('button', { name: 'Play' }))
+    expect(first.paused).toBe(true)
+    expect(second.paused).toBe(false)
+    expect(within(players[0]).getByRole('button', { name: 'Play' })).toBeInTheDocument()
+    expect(within(players[1]).getByRole('button', { name: 'Pause' })).toBeInTheDocument()
+  })
+})
+
+describe('unsafe media URLs', () => {
+  test.each(['http://media.example.test/a.mp3', 'javascript:alert(1)', 'data:audio/mp3;base64,AAAA'])(
+    'content page renders no audio element and no download link for %s',
+    async (media_url) => {
+      serve({ '/dawah/resources/:id/': () => ok(audio(8, { media_url })) })
+      const { container } = render(<TestApp path="/dawah/content/8" />)
+      expect(await screen.findByText('This audio is not available right now.')).toBeInTheDocument()
+      expect(container.querySelector('audio')).toBeNull()
+      expect(screen.queryByRole('link', { name: 'Download audio' })).toBeNull()
+      expect(container.querySelector('a[href^="javascript:"], a[download]')).toBeNull()
+    },
+  )
 })

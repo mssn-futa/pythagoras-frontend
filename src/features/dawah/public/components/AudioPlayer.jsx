@@ -9,6 +9,9 @@ const MEDIA_ERRORS = {
 }
 
 const SKIP_SECONDS = 15
+
+// Only one recording plays at a time on a page.
+let activeAudio = null
 const btn =
   'inline-flex h-11 min-w-11 items-center justify-center rounded-full px-3 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2A742F] focus-visible:ring-offset-2 disabled:opacity-40'
 
@@ -27,6 +30,8 @@ export default function AudioPlayer({ src, title, durationHint = null }) {
   const [current, setCurrent] = useState(0)
   const [duration, setDuration] = useState(null)
   const [error, setError] = useState(null)
+  const [notice, setNotice] = useState(null)
+  const resumeAt = useRef(0)
 
   const media = () => audio.current
   const knownDuration = Number.isFinite(duration) ? duration : null
@@ -42,17 +47,18 @@ export default function AudioPlayer({ src, title, durationHint = null }) {
     if (!el) return
     if (el.paused || el.ended) {
       setError(null)
+      setNotice(null)
       const attempt = el.play()
       attempt?.catch?.((reason) => {
         if (reason?.name === 'AbortError') return
         setPlaying(false)
-        setError(
-          reason?.name === 'NotAllowedError'
-            ? 'Your browser blocked playback. Press play again.'
-            : reason?.name === 'NotSupportedError'
-              ? MEDIA_ERRORS[4]
-              : MEDIA_ERRORS[2],
-        )
+        setLoading(false)
+        if (reason?.name === 'NotAllowedError') {
+          // Not a failure of the media: Play stays enabled so the reader can retry.
+          setNotice('Your browser blocked playback. Press Play again.')
+          return
+        }
+        setError(reason?.name === 'NotSupportedError' ? MEDIA_ERRORS[4] : MEDIA_ERRORS[2])
       })
     } else {
       el.pause()
@@ -69,7 +75,9 @@ export default function AudioPlayer({ src, title, durationHint = null }) {
 
   function retry() {
     const el = media()
+    resumeAt.current = current // a mid-recording failure resumes where it stopped
     setError(null)
+    setNotice(null)
     setLoading(true)
     el.load()
   }
@@ -84,10 +92,24 @@ export default function AudioPlayer({ src, title, durationHint = null }) {
         onLoadedMetadata={() => {
           syncDuration()
           setLoading(false)
+          if (resumeAt.current > 0) {
+            const el = media()
+            const target = resumeAt.current
+            resumeAt.current = 0
+            if (!Number.isFinite(el.duration) || target < el.duration) el.currentTime = target
+          }
         }}
         onDurationChange={syncDuration}
         onCanPlay={() => setLoading(false)}
         onWaiting={() => setLoading(true)}
+        onPlay={() => {
+          // Driven by the play event: the button reads Pause as soon as playback is requested.
+          if (activeAudio && activeAudio !== media()) activeAudio.pause()
+          activeAudio = media()
+          setPlaying(true)
+          setNotice(null)
+          if (media().readyState < 3) setLoading(true)
+        }}
         onPlaying={() => {
           setPlaying(true)
           setLoading(false)
@@ -143,7 +165,7 @@ export default function AudioPlayer({ src, title, durationHint = null }) {
       </div>
 
       <p role="status" className="mt-2 min-h-5 text-xs text-gray-600 dark:text-gray-300">
-        {error ? '' : seeking ? 'Seeking…' : loading ? 'Loading audio…' : ''}
+        {error ? '' : notice ? notice : seeking ? 'Seeking…' : loading ? 'Loading audio…' : ''}
       </p>
 
       {error && (
