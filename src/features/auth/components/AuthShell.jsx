@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import bgImage from "../../../assets/imageOne.jpg";
 import smallLogo from "../../../assets/imageOne.jpg";
+import sideImage from "../../../assets/imageTen.png";
 
 const tabBase = "flex-1 text-center py-2 px-4 rounded-md text-sm font-medium transition-all";
 const tabActive = `${tabBase} bg-gradient-to-r from-[#2A742F] to-[#04AF43] text-white shadow-sm`;
@@ -30,6 +31,16 @@ export default function AuthShell({ active, title, subtitle, children, footer })
                 A unified ecosystem for Muslim students' Da'wah and learning.
               </p>
             </header>
+
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 space-y-4">
+              <div className="flex items-center gap-4">
+                <img src={sideImage} alt="" className="h-12 w-12 rounded-full object-cover" />
+                <p className="flex-1 font-semibold text-lg">Your Islamic student hub</p>
+              </div>
+              <p className="text-white/90 text-sm leading-relaxed">
+                Da'wah events, lectures and Arabic learning in one place.
+              </p>
+            </div>
           </aside>
 
           <div className="flex items-center justify-center p-8 lg:p-12">
