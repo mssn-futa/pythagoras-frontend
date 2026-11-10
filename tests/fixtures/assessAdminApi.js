@@ -79,7 +79,10 @@ export function createQuizBackend({ quizzes = [], results = {}, classes = [] } =
       const call = await record(request)
       const blocked = guard(call)
       if (blocked) return blocked
-      return ok({ count: state.classes.length, next: null, previous: null, results: state.classes })
+      const number = Number(call.search.page ?? 1)
+      const size = Number(call.search.page_size ?? 20)
+      const more = number * size < state.classes.length
+      return ok({ count: state.classes.length, next: more ? `?page=${number + 1}` : null, previous: null, results: state.classes.slice((number - 1) * size, number * size) })
     }),
     http.get(url('/quiz/quizzes/'), async ({ request }) => {
       const call = await record(request)

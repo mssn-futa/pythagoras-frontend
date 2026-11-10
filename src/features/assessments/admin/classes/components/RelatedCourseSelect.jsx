@@ -14,9 +14,20 @@ export default function RelatedCourseSelect({ value, onChange, disabled, error }
 
   useEffect(() => {
     let live = true;
-    listClasses({ pageSize: 100 })
-      .then((loaded) => live && setClasses(loaded.results.filter((item) => !item.legacy)))
-      .catch(() => live && setFailed(true));
+    // Page through every class (not just the first 100).
+    (async () => {
+      try {
+        const all = [];
+        for (let page = 1; page <= 50; page += 1) {
+          const loaded = await listClasses({ page, pageSize: 100 });
+          all.push(...loaded.results);
+          if (!loaded.next) break;
+        }
+        if (live) setClasses(all.filter((item) => !item.legacy));
+      } catch {
+        if (live) setFailed(true);
+      }
+    })();
     return () => {
       live = false;
     };

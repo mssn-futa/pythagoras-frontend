@@ -1,8 +1,9 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { http } from 'msw'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { server } from '../mocks/server.js'
-import { admin, fail, recorder, resetSession, sessionHandlers, storeRefreshToken, student, useApiOrigin } from '../fixtures/auth.js'
+import { admin, fail, ok, recorder, resetSession, sessionHandlers, storeRefreshToken, student, url, useApiOrigin } from '../fixtures/auth.js'
 import { TestApp } from '../fixtures/TestApp.jsx'
 import { createQuizBackend, draftQuiz } from '../fixtures/assessAdminApi.js'
 import { arabicClass, createClassBackend, enrollmentRow, moduleRecord, resourceRef } from '../fixtures/assessClassesApi.js'
@@ -236,27 +237,37 @@ describe('modules', () => {
     expect(screen.getByRole('button', { name: 'Move Colours down' })).toBeDisabled()
   })
 
-  test('moving a module up PATCHes only {order} for the modules whose position changed, then reloads', async () => {
+  test('moving a module up sends one atomic reorder with every id, no per-module PATCH, and keeps focus on the moved module', async () => {
     const backend = createClassBackend({ classes: [arabicClass({ status: 'published' })], modules: { 2: three() } })
     open('/admin/classes/2/modules', backend)
     await userEvent.setup().click(await screen.findByRole('button', { name: 'Move Colours up' }))
     expect(await screen.findByText('Module order saved.')).toBeVisible()
-    expect(backend.callsTo('PATCH', '/modules/').map((c) => [c.path, c.body])).toEqual([
-      ['/quiz/classes/2/modules/22/', { order: 2 }],
-      ['/quiz/classes/2/modules/21/', { order: 3 }],
-    ])
+    expect(backend.callsTo('POST', '/modules/reorder/').map((c) => c.body)).toEqual([{ module_ids: [20, 22, 21] }])
+    expect(backend.callsTo('PATCH', '/modules/')).toEqual([])
     await waitFor(() => expect(screen.getAllByRole('listitem').map((li) => li.querySelector('p').textContent)).toEqual(['1. Greetings', '2. Colours', '3. Numbers']))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Move Colours up' })).toHaveFocus())
+    expect(backend.state.modules[2].map((m) => m.order).sort()).toEqual([1, 2, 3]) // unique
   })
 
-  test('a failed reorder shows the error and the persisted order', async () => {
+  test('moving a module to the top moves focus to its remaining enabled button', async () => {
+    const backend = createClassBackend({ classes: [arabicClass({ status: 'published' })], modules: { 2: three() } })
+    open('/admin/classes/2/modules', backend)
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Move Numbers up' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Move Numbers down' })).toHaveFocus())
+  })
+
+  test('a failed reorder says nothing changed, shows the persisted order and offers a retry', async () => {
     const backend = createClassBackend({ classes: [arabicClass({ status: 'published' })], modules: { 2: three() } })
     open('/admin/classes/2/modules', backend)
     const user = userEvent.setup()
     await screen.findByRole('button', { name: 'Move Numbers up' })
-    backend.state.failNext = { method: 'PATCH', pattern: '/modules/', response: () => fail(409, 'CLASS_CLOSED', 'Closed.') }
+    backend.state.modules[2].push({ id: 23, title: 'Added elsewhere', body: 'x', order: 4, status: 'draft', attached: [], quizzes: [] }) // stale view: id set mismatch
     await user.click(screen.getByRole('button', { name: 'Move Numbers up' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent(/conflicts with the current state/)
-    expect(screen.getAllByRole('listitem').map((li) => li.querySelector('p').textContent)).toEqual(['1. Greetings', '2. Numbers', '3. Colours'])
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not be saved, so nothing changed/)
+    await waitFor(() => expect(screen.getAllByRole('listitem').map((li) => li.querySelector('p').textContent)).toEqual(['1. Greetings', '2. Numbers', '3. Colours', '4. Added elsewhere']))
+    expect(backend.state.modules[2].map((m) => m.order)).toEqual([1, 2, 3, 4])
+    await user.click(screen.getByRole('button', { name: 'Move Numbers up' })) // retry on fresh data succeeds
+    expect(await screen.findByText('Module order saved.')).toBeVisible()
   })
 
   test('publish and unpublish are explicit calls; draft delete is allowed and protected delete is explained', async () => {
@@ -342,19 +353,64 @@ describe('modules', () => {
     expect(location()).toBe('/admin/classes/2/modules/new')
   })
 
-  test('editing keeps hidden attachments attached, shows linked quizzes, and sends the full D3 body', async () => {
-    const module = moduleRecord({ id: 20, resources: [resourceRef(8, 'Patience')], resource_ids: [8, 99], quizzes: [{ id: 4, title: 'Week 1 quiz', status: 'published' }] })
-    const backend = createClassBackend({ classes: [arabicClass({ status: 'published' })], modules: { 2: [module] }, resources: [...resources, { ...resourceRef(99, 'Hidden'), hidden: true }] })
+  const hiddenSetup = () => {
+    const module = moduleRecord({ id: 20, resources: [resourceRef(8, 'Patience')], hidden_resource_ids: [99], quizzes: [{ id: 4, title: 'Week 1 quiz', status: 'published' }] })
+    return createClassBackend({ classes: [arabicClass({ status: 'published' })], modules: { 2: [module] }, resources: [...resources, { ...resourceRef(99, 'Hidden'), hidden: true }] })
+  }
+
+  test('an unrelated edit sends only the changed field (no resource_ids), even with a hidden attachment', async () => {
+    const backend = hiddenSetup()
     open('/admin/classes/2/modules/20', backend)
     const user = userEvent.setup()
-    expect(await screen.findByText(/1 attached resource is currently hidden/)).toBeVisible()
+    expect(await screen.findByText(/currently hidden/)).toBeVisible()
+    expect(screen.getByText('Resource #99 (hidden)')).toBeVisible()
     expect(screen.getByRole('link', { name: 'Week 1 quiz' })).toHaveAttribute('href', '/admin/quizzes/4')
     expect(screen.getByRole('button', { name: 'Save module' })).toBeDisabled()
     await user.clear(screen.getByLabelText('Title'))
     await user.type(screen.getByLabelText('Title'), 'Greetings v2')
     await user.click(screen.getByRole('button', { name: 'Save module' }))
     expect(await screen.findByText('Module saved.')).toBeVisible()
-    expect(backend.callsTo('PATCH', '/quiz/classes/2/modules/20/')[0].body).toEqual({ title: 'Greetings v2', body: 'Lesson text', order: 1, resource_ids: [8, 99] })
+    expect(backend.callsTo('PATCH', '/quiz/classes/2/modules/20/')[0].body).toEqual({ title: 'Greetings v2' })
+    expect(backend.state.modules[2][0].attached).toEqual([8, 99])
+  })
+
+  test('changing the selection sends resource_ids including still-attached hidden ids; adding a hidden one is rejected', async () => {
+    const backend = hiddenSetup()
+    open('/admin/classes/2/modules/20', backend)
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Attach Recorded lecture' }))
+    await user.click(screen.getByRole('button', { name: 'Save module' }))
+    expect(await screen.findByText('Module saved.')).toBeVisible()
+    expect(backend.callsTo('PATCH', '/quiz/classes/2/modules/20/')[0].body).toEqual({ resource_ids: [8, 19, 99] })
+    // newly added ids must be visible: the server refuses one that was hidden meanwhile
+    backend.state.resources.find((r) => r.id === 21).hidden = true
+    await user.click(screen.getByRole('button', { name: 'Attach Notes' }))
+    await user.click(screen.getByRole('button', { name: 'Save module' }))
+    expect(await screen.findByText('One or more resources are not published or do not exist.')).toBeVisible()
+  })
+
+  test('Detach removes a hidden attachment from the saved set', async () => {
+    const backend = hiddenSetup()
+    open('/admin/classes/2/modules/20', backend)
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Detach hidden resource 99' }))
+    expect(screen.queryByText('Resource #99 (hidden)')).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Save module' }))
+    expect(await screen.findByText('Module saved.')).toBeVisible()
+    expect(backend.callsTo('PATCH', '/quiz/classes/2/modules/20/')[0].body).toEqual({ resource_ids: [8] })
+    expect(backend.state.modules[2][0].attached).toEqual([8])
+    expect(screen.queryByText(/currently hidden/)).toBeNull()
+  })
+
+  test('a duplicate order from the editor is a field error', async () => {
+    const backend = createClassBackend({ classes: [arabicClass({ status: 'published' })], modules: { 2: three() } })
+    open('/admin/classes/2/modules/21', backend)
+    const user = userEvent.setup()
+    await user.clear(await screen.findByLabelText('Order'))
+    await user.type(screen.getByLabelText('Order'), '1')
+    await user.click(screen.getByRole('button', { name: 'Save module' }))
+    expect(await screen.findByText('Another module already has this order.')).toBeVisible()
+    expect(backend.callsTo('PATCH', '/modules/21/')[0].body).toEqual({ order: 1 })
   })
 
   test('module form validation is local; a closed class locks the form', async () => {
@@ -465,6 +521,36 @@ describe('roster', () => {
     expect(await screen.findByText('Tunde Bello')).toBeVisible()
   })
 
+  test('an enroll 409 reloads the class and all Enroll buttons are disabled while one request is in flight', async () => {
+    const backend = createClassBackend({ classes: [arabicClass({ status: 'published' })], enrollments: roster(), students })
+    open('/admin/classes/2/roster', backend)
+    const user = userEvent.setup()
+    await user.type(await screen.findByLabelText('Find a student to enroll'), 'e')
+    await user.click(screen.getByRole('button', { name: 'Find student' }))
+    await screen.findByRole('button', { name: 'Enroll Tunde Bello' })
+    backend.state.classes[0].status = 'closed'
+    const classCalls = backend.callsTo('GET', '/quiz/classes/2/').length
+    await user.click(screen.getByRole('button', { name: 'Enroll Tunde Bello' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/conflicts with the current state/)
+    await waitFor(() => expect(backend.callsTo('GET', '/quiz/classes/2/').length).toBeGreaterThan(classCalls))
+    await waitFor(() => expect(screen.queryByLabelText('Find a student to enroll')).toBeNull()) // closed: no enrollment
+  })
+
+  test('while one Enroll is in flight the other Enroll buttons are disabled', async () => {
+    const backend = createClassBackend({ classes: [arabicClass({ status: 'published' })], enrollments: roster(), students })
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    open('/admin/classes/2/roster', backend, admin, [])
+    server.use(http.post(url('/quiz/classes/2/enrollments/'), async () => { await gate; return ok(enrollmentRow(50, 9, 'Tunde Bello')) }))
+    const user = userEvent.setup()
+    await user.type(await screen.findByLabelText('Find a student to enroll'), 'e')
+    await user.click(screen.getByRole('button', { name: 'Find student' }))
+    await user.click(await screen.findByRole('button', { name: 'Enroll Tunde Bello' }))
+    expect(screen.getByRole('button', { name: 'Enroll Amina Yusuf' })).toBeDisabled()
+    release()
+    await screen.findByText('Tunde Bello enrolled.')
+  })
+
   test('a draft class offers no enrollment', async () => {
     const backend = createClassBackend({ classes: [arabicClass()], students })
     open('/admin/classes/2/roster', backend)
@@ -492,6 +578,16 @@ describe('quiz draft related class', () => {
     await user.click(screen.getByRole('button', { name: 'Save draft details' }))
     await waitFor(() => expect(quizzes.callsTo('PATCH', '/quiz/quizzes/5/')).toHaveLength(2))
     expect(quizzes.callsTo('PATCH', '/quiz/quizzes/5/')[1].body).toMatchObject({ related_course: null })
+  })
+
+  test('the selector pages through every class, not just the first page', async () => {
+    const many = Array.from({ length: 105 }, (_, i) => arabicClass({ id: i + 1, code: `C${i + 1}`, title: `Class ${i + 1}`, status: 'published' }))
+    const quizzes = createQuizBackend({ quizzes: [draftQuiz({ related_course: 105 })], classes: many })
+    open('/admin/quizzes/5', quizzes)
+    const select = await screen.findByLabelText('Related Arabic class (optional)')
+    await waitFor(() => expect(within(select).getByRole('option', { name: /C105: Class 105/ })).toBeVisible())
+    expect(select).toHaveValue('105')
+    expect(quizzes.callsTo('GET', '/quiz/classes/').map((c) => c.search.page)).toEqual(['1', '2'])
   })
 
   test('new draft carries the chosen class; a published quiz shows the link locked', async () => {

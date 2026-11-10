@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { describeClassError } from '../../src/features/assessments/admin/classes/classErrors.js'
 import { moveItem, validateClassForm, validateModuleForm } from '../../src/features/assessments/admin/classes/classRules.js'
 import {
-  buildClassPayload, buildModulePayload, mapClass, mapEnrollment, mapModule, mapResourceRef,
+  buildModulePatch, buildClassPayload, buildModulePayload, mapClass, mapEnrollment, mapModule, mapResourceRef,
 } from '../../src/features/assessments/admin/classes/classService.js'
 import { mapQuiz } from '../../src/features/assessments/admin/adminQuizService.js'
 import { ApiError } from '../../src/services/api'
@@ -13,7 +13,9 @@ describe('class mapping', () => {
     const mapped = mapClass(arabicClass({ module_count: 3, enrollment_count: 12 }))
     expect(mapped).toMatchObject({ id: 2, code: 'ARB101', status: 'draft', kind: 'arabic', legacy: false, moduleCount: 3, enrollmentCount: 12 })
   })
-  test('legacy kind and unknown status fail closed (read-only)', () => {
+  test('legacy kind, missing kind and unknown status fail closed (read-only)', () => {
+    const { kind, ...noKind } = arabicClass()
+    expect([kind, mapClass(noKind).legacy]).toEqual(['arabic', true])
     expect(mapClass(arabicClass({ kind: 'general' })).legacy).toBe(true)
     const odd = mapClass(arabicClass({ status: 'archived' }))
     expect([odd.status, odd.legacy]).toEqual([null, true])
@@ -24,13 +26,13 @@ describe('class mapping', () => {
 })
 
 describe('module mapping', () => {
-  test('keeps hidden attachments so a save never drops them', () => {
-    const mapped = mapModule(moduleRecord({ resources: [resourceRef(8, 'Patience')], resource_ids: [8, 19], quizzes: [{ id: 4, title: 'Week 1', status: 'published' }] }))
+  test('maps visible resources and hidden_resource_ids separately', () => {
+    const mapped = mapModule(moduleRecord({ resources: [resourceRef(8, 'Patience')], hidden_resource_ids: [19], quizzes: [{ id: 4, title: 'Week 1', status: 'published' }] }))
     expect(mapped.resources.map((r) => r.id)).toEqual([8])
     expect(mapped.hiddenResourceIds).toEqual([19])
     expect(mapped.quizzes).toEqual([{ id: 4, title: 'Week 1', status: 'published' }])
   })
-  test('without resource_ids nothing is considered hidden; unknown status is null', () => {
+  test('without hidden_resource_ids nothing is considered hidden; unknown status is null', () => {
     const mapped = mapModule(moduleRecord({ status: 'weird', resources: [resourceRef(8, 'x')] }))
     expect([mapped.hiddenResourceIds, mapped.status]).toEqual([[], null])
   })
@@ -53,6 +55,15 @@ describe('payloads', () => {
   })
   test('module body is the D3 request shape', () => {
     expect(buildModulePayload({ title: ' Arabic greetings ', body: 'Lesson text', order: 1, resourceIds: [8, 19] })).toEqual({ title: 'Arabic greetings', body: 'Lesson text', order: 1, resource_ids: [8, 19] })
+  })
+})
+
+describe('module patch', () => {
+  const saved = mapModule(moduleRecord({ title: 'T', body: 'B', order: 2, resources: [resourceRef(8, 'x')], hidden_resource_ids: [9] }))
+  test('only changed fields; resource_ids only when the selection changed', () => {
+    expect(buildModulePatch(saved, { title: ' T ', body: 'B', order: 2, resourceIds: [8, 9] })).toEqual({})
+    expect(buildModulePatch(saved, { title: 'U', body: 'B', order: 2, resourceIds: [8, 9] })).toEqual({ title: 'U' })
+    expect(buildModulePatch(saved, { title: 'T', body: 'B2', order: 3, resourceIds: [8] })).toEqual({ body: 'B2', order: 3, resource_ids: [8] })
   })
 })
 

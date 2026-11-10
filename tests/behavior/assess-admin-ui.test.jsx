@@ -114,7 +114,7 @@ describe('create draft', () => {
     await actor.click(await screen.findByRole('button', { name: 'Save draft' }))
     expect(screen.getByText('Enter a title.')).toBeVisible()
     // Only the class list for the optional related-class selector may have been requested; no quiz write.
-    expect(backend.state.calls.filter((call) => !call.path.startsWith('/quiz/classes/'))).toEqual([])
+    expect(backend.state.calls.filter((call) => !(call.method === 'GET' && call.path === '/quiz/classes/'))).toEqual([])
 
     await actor.type(screen.getByLabelText('Title'), 'T')
     await actor.type(screen.getByLabelText(/Time limit/), '500')

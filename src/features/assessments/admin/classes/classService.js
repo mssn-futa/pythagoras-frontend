@@ -25,7 +25,7 @@ const isObject = (raw) => raw && typeof raw === "object" && !Array.isArray(raw);
  */
 export function mapClass(raw) {
   if (!isObject(raw)) throw contractError("class");
-  const kind = raw.kind ?? "arabic";
+  const kind = raw.kind ?? null; // a missing kind is not assumed Arabic (fail closed)
   const status = CLASS_STATUSES.includes(raw.status) ? raw.status : null;
   return {
     id: raw.id,
@@ -55,15 +55,13 @@ export function mapResourceRef(raw) {
 
 /**
  * Module. D3: ID/course/title/body/order, "safe visible typed resource payloads", associated published
- * quiz metadata. ASSUMPTIONS: `resources` holds the visible attachments; an optional `resource_ids`
- * lists every attachment including locally hidden ones (so a save never silently drops those);
- * `quizzes` holds {id,title,status}.
+ * quiz metadata. Lead decision (frontend-requests-for-backend.md): `resources` holds the visible
+ * attachments and `hidden_resource_ids` the attached-but-not-visible ones (offered for "Detach").
+ * ASSUMPTION: `quizzes` holds {id,title,status}.
  */
 export function mapModule(raw) {
   if (!isObject(raw)) throw contractError("module");
   const resources = (raw.resources ?? []).map(mapResourceRef);
-  const visibleIds = resources.map((resource) => resource.id);
-  const allIds = Array.isArray(raw.resource_ids) ? raw.resource_ids.filter(Number.isInteger) : visibleIds;
   return {
     id: raw.id,
     courseId: raw.course_id ?? raw.course ?? null,
@@ -72,7 +70,7 @@ export function mapModule(raw) {
     order: toInt(raw.order) ?? 0,
     status: MODULE_STATUSES.includes(raw.status) ? raw.status : null,
     resources,
-    hiddenResourceIds: allIds.filter((id) => !visibleIds.includes(id)),
+    hiddenResourceIds: Array.isArray(raw.hidden_resource_ids) ? raw.hidden_resource_ids.filter(Number.isInteger) : [],
     quizzes: (raw.quizzes ?? []).map((quiz) => ({ id: quiz.id, title: quiz.title ?? `Quiz ${quiz.id}`, status: quiz.status ?? null })),
     createdAt: raw.created_at ?? null,
     updatedAt: raw.updated_at ?? null,
@@ -114,9 +112,24 @@ export function buildClassPayload({ code, title, description }) {
   return { code: code.trim(), title: title.trim(), description: description.trim() };
 }
 
-/** D3 module request: {"title","body","order","resource_ids"}. */
+/** D3 module create request: {"title","body","order","resource_ids"}. */
 export function buildModulePayload({ title, body, order, resourceIds }) {
   return { title: title.trim(), body, order, resource_ids: resourceIds };
+}
+
+/**
+ * Partial module PATCH: only fields that changed. `resource_ids` (which replaces the attachment set)
+ * is sent only when the selection changed, so unrelated edits never revalidate attachments.
+ */
+export function buildModulePatch(saved, { title, body, order, resourceIds }) {
+  const patch = {};
+  if (title.trim() !== saved.title) patch.title = title.trim();
+  if (body !== saved.body) patch.body = body;
+  if (order !== saved.order) patch.order = order;
+  const before = [...saved.resources.map((r) => r.id), ...saved.hiddenResourceIds];
+  const same = before.length === resourceIds.length && before.every((id, index) => id === resourceIds[index]);
+  if (!same) patch.resource_ids = resourceIds;
+  return patch;
 }
 
 const pageParams = ({ page, pageSize }) => ({ ...(page ? { page } : {}), ...(pageSize ? { page_size: pageSize } : {}) });
@@ -157,13 +170,8 @@ export const deleteModule = (classId, moduleId) => api.delete(`/quiz/classes/${c
 export const publishModule = (classId, moduleId) => api.post(`/quiz/classes/${classId}/modules/${moduleId}/publish/`);
 export const unpublishModule = (classId, moduleId) => api.post(`/quiz/classes/${classId}/modules/${moduleId}/unpublish/`);
 
-/** Reorder: PATCH only {order} for every module whose position changed (no other field is sent). */
-export async function applyModuleOrder(classId, modules) {
-  for (let index = 0; index < modules.length; index += 1) {
-    const wanted = index + 1;
-    if (modules[index].order !== wanted) await updateModule(classId, modules[index].id, { order: wanted });
-  }
-}
+/** Atomic reorder (lead decision): POST .../modules/reorder/ {module_ids:[all ids in the new order]}. */
+export const reorderModules = (classId, moduleIds) => api.post(`/quiz/classes/${classId}/modules/reorder/`, { module_ids: moduleIds });
 
 // --- resource picker (D2 archive: published, locally visible, ready resources only) ---------------
 export const searchResources = async ({ search, type, page, pageSize = 20 } = {}) =>

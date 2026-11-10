@@ -7,7 +7,7 @@ import { useClassRecord } from "../useClassRecord.js";
 import ResourcePicker from "../components/ResourcePicker.jsx";
 import { describeClassError } from "../classErrors.js";
 import { validateModuleForm } from "../classRules.js";
-import { buildModulePayload, createModule, getModule, listModules, updateModule } from "../classService.js";
+import { buildModulePatch, buildModulePayload, createModule, getModule, listModules, updateModule } from "../classService.js";
 
 const FIELDS = ["title", "body", "order", "resource_ids"];
 
@@ -25,6 +25,7 @@ function ModuleEditor({ id, moduleId }) {
   const [module, setModule] = useState(null);
   const [form, setForm] = useState({ title: "", body: "", order: "" });
   const [resources, setResources] = useState([]);
+  const [hiddenIds, setHiddenIds] = useState([]);
   const [baseline, setBaseline] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -38,7 +39,8 @@ function ModuleEditor({ id, moduleId }) {
     setModule(loaded);
     setForm(next);
     setResources(loaded.resources);
-    setBaseline(JSON.stringify([next, loaded.resources.map((r) => r.id)]));
+    setHiddenIds(loaded.hiddenResourceIds);
+    setBaseline(JSON.stringify([next, [...loaded.resources.map((r) => r.id), ...loaded.hiddenResourceIds]]));
   };
 
   useEffect(() => {
@@ -67,7 +69,8 @@ function ModuleEditor({ id, moduleId }) {
     };
   }, [id, moduleId, isNew]);
 
-  const current = JSON.stringify([form, resources.map((r) => r.id)]);
+  const allIds = [...resources.map((r) => r.id), ...hiddenIds];
+  const current = JSON.stringify([form, allIds]);
   const dirty = baseline !== null && current !== baseline;
 
   async function submit(event) {
@@ -77,20 +80,16 @@ function ModuleEditor({ id, moduleId }) {
     const found = validateModuleForm(form);
     setErrors(found);
     if (Object.keys(found).length) return;
-    const payload = buildModulePayload({
-      title: form.title,
-      body: form.body,
-      order: Number(form.order),
-      resourceIds: [...resources.map((r) => r.id), ...(module?.hiddenResourceIds ?? [])],
-    });
+    const values = { title: form.title, body: form.body, order: Number(form.order), resourceIds: allIds };
     setSaving(true);
     try {
       if (isNew) {
-        const created = await createModule(id, payload);
+        const created = await createModule(id, buildModulePayload(values));
         navigate(`/admin/classes/${id}/modules/${created.id}`, { replace: true, state: { notice: "Module saved as a draft." } });
         return;
       }
-      await updateModule(id, moduleId, payload);
+      const patch = buildModulePatch(module, values);
+      await updateModule(id, moduleId, patch);
       adopt(await getModule(id, moduleId));
       setNotice("Module saved.");
     } catch (failure) {
@@ -158,7 +157,7 @@ function ModuleEditor({ id, moduleId }) {
                   <FieldError id="module-body-error">{text("body")}</FieldError>
                 </div>
               </div>
-              <ResourcePicker selected={resources} onChange={setResources} disabled={!editable} error={text("resource_ids")} hiddenCount={module?.hiddenResourceIds.length ?? 0} />
+              <ResourcePicker selected={resources} onChange={setResources} disabled={!editable} error={text("resource_ids")} hiddenIds={hiddenIds} onDetachHidden={(hid) => setHiddenIds(hiddenIds.filter((value) => value !== hid))} />
               {module && module.quizzes.length > 0 && (
                 <div>
                   <h3 className="mb-2 text-sm font-medium text-gray-700">Associated quizzes</h3>

@@ -12,7 +12,7 @@ const PAGE_SIZE = 10;
  * URLs). Candidates come only from the D2 archive, which lists published, locally visible resources;
  * the server still validates every ID on save.
  */
-export default function ResourcePicker({ selected, onChange, disabled, error, hiddenCount = 0 }) {
+export default function ResourcePicker({ selected, onChange, disabled, error, hiddenIds = [], onDetachHidden }) {
   const [term, setTerm] = useState("");
   const [type, setType] = useState("");
   const [applied, setApplied] = useState({ search: "", type: "" });
@@ -65,10 +65,20 @@ export default function ResourcePicker({ selected, onChange, disabled, error, hi
           ))}
         </ul>
       )}
-      {hiddenCount > 0 && (
-        <Alert tone="info">
-          {hiddenCount} attached {hiddenCount === 1 ? "resource is" : "resources are"} currently hidden (not published) and not shown here. {hiddenCount === 1 ? "It stays" : "They stay"} attached when you save.
-        </Alert>
+      {hiddenIds.length > 0 && (
+        <div className="space-y-2">
+          <Alert tone="info">These attached resources are currently hidden (not published) so students cannot see them. They stay attached unless you detach them.</Alert>
+          <ul aria-label="Hidden attached resources" className="space-y-2">
+            {hiddenIds.map((hid) => (
+              <li key={hid} className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-600">
+                <span>Resource #{hid} (hidden)</span>
+                <button type="button" className={secondaryButton} disabled={disabled} onClick={() => onDetachHidden(hid)} aria-label={`Detach hidden resource ${hid}`}>
+                  Detach
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       <FieldError id="resource-ids-error">{error}</FieldError>
 

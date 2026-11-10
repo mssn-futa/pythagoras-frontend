@@ -124,7 +124,7 @@ function Roster({ id }) {
             </form>
           </div>
 
-          {canAdd && <AddStudent classId={id} onAdded={(name) => { setNotice(`${name} enrolled.`); setProblem(null); load(); }} onFailed={(message) => { setProblem(message); setNotice(null); }} />}
+          {canAdd && <AddStudent classId={id} onAdded={(name) => { setNotice(`${name} enrolled.`); setProblem(null); load(); }} onFailed={(described) => { setProblem(described.message); setNotice(null); if (described.conflict || described.gone) reload(); }} />}
 
           {error && (
             <Alert>
@@ -232,7 +232,7 @@ function AddStudent({ classId, onAdded, onFailed }) {
       setTerm("");
       onAdded(student.name);
     } catch (failure) {
-      onFailed(describeClassError(failure).message);
+      onFailed(describeClassError(failure));
     } finally {
       setAdding(null);
     }
@@ -255,7 +255,7 @@ function AddStudent({ classId, onAdded, onFailed }) {
               <span>
                 {student.name} <span className="text-gray-500">{student.email}</span>
               </span>
-              <button type="button" className={secondaryButton} disabled={adding === student.id} onClick={() => add(student)} aria-label={`Enroll ${student.name}`}>
+              <button type="button" className={secondaryButton} disabled={adding !== null} onClick={() => add(student)} aria-label={`Enroll ${student.name}`}>
                 Enroll
               </button>
             </li>

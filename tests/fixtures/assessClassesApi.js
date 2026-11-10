@@ -44,9 +44,14 @@ export const enrollmentRow = (id, studentId, name, status = 'active', overrides 
 /** Stateful in-memory stand-in for the D3 admin class API (synthetic data only). */
 export function createClassBackend({ classes = [], modules = {}, enrollments = {}, resources = [], students = [] } = {}) {
   const state = {
-    classes: structuredClone(classes), modules: structuredClone(modules), enrollments: structuredClone(enrollments),
+    classes: structuredClone(classes),
+    modules: Object.fromEntries(Object.entries(structuredClone(modules)).map(([id, list]) => [id, list.map(({ resources: seeded = [], hidden_resource_ids: hid = [], ...module }) => ({ ...module, attached: [...seeded.map((r) => r.id), ...hid] }))])), enrollments: structuredClone(enrollments),
     resources: structuredClone(resources), students: structuredClone(students),
     calls: [], violations: [], nextId: 500, failNext: null,
+  }
+  // Resources seeded onto modules are visible catalogue resources unless the test lists them as hidden.
+  for (const list of Object.values(modules)) {
+    for (const seeded of list) for (const ref of seeded.resources ?? []) if (!state.resources.some((r) => r.id === ref.id)) state.resources.push(structuredClone(ref))
   }
   const record = async (request, params) => {
     const text = ['GET', 'DELETE'].includes(request.method) ? '' : await request.clone().text()
@@ -68,8 +73,18 @@ export function createClassBackend({ classes = [], modules = {}, enrollments = {
   }
   const findClass = (id) => state.classes.find((item) => String(item.id) === String(id))
   const modulesOf = (id) => (state.modules[id] ??= [])
-  const withResources = (module) => ({ ...module, resources: module.resources })
-  const resolve = (ids) => ids.map((id) => state.resources.find((resource) => resource.id === id)).filter(Boolean)
+  // A module stores attached ids; the admin payload splits them into visible resources and hidden_resource_ids.
+  const ser = ({ attached = [], ...module }) => {
+    const found = attached.map((id) => state.resources.find((resource) => resource.id === id))
+    return {
+      ...module,
+      resources: found.filter((resource) => resource && !resource.hidden).map((resource) => Object.fromEntries(Object.entries(resource).filter(([key]) => key !== 'hidden'))),
+      hidden_resource_ids: attached.filter((id, index) => !found[index] || found[index].hidden),
+    }
+  }
+  // Newly added ids must exist and be visible; ids already attached stay accepted even if now hidden.
+  const badResources = (ids, current = []) => ids.some((id) => !current.includes(id) && !state.resources.find((resource) => resource.id === id && !resource.hidden))
+  const orderTaken = (target, order, except) => modulesOf(target.id).some((item) => item !== except && item.order === order)
   const route = (method, path, handler) =>
     http[method](url(path), async ({ request, params }) => {
       const call = await record(request, params)
@@ -120,21 +135,31 @@ export function createClassBackend({ classes = [], modules = {}, enrollments = {
       return ok(target, 'Closed.')
     }),
 
-    route('get', '/quiz/classes/:id/modules/', ({ call, target }) => ok(page([...modulesOf(target.id)].sort((a, b) => a.order - b.order).map(withResources), call.search))),
+    route('get', '/quiz/classes/:id/modules/', ({ call, target }) => ok(page([...modulesOf(target.id)].sort((a, b) => a.order - b.order).map(ser), call.search))),
     route('post', '/quiz/classes/:id/modules/', ({ call, target }) => {
       const bad = moduleBodyViolation(call.body, { partial: false })
       if (bad) return violation(bad)
       if (target.status === 'closed') return fail(409, 'CLASS_CLOSED', 'A closed class cannot gain modules.')
       if (!call.body.title.trim()) return fail(400, 'VALIDATION_ERROR', 'Correct the highlighted fields.', { title: ['This field may not be blank.'] })
-      const found = resolve(call.body.resource_ids)
-      if (found.length !== call.body.resource_ids.length) return fail(400, 'VALIDATION_ERROR', 'Correct the highlighted fields.', { resource_ids: ['One or more resources are not published or do not exist.'] })
-      const created = { id: state.nextId++, course_id: target.id, status: 'draft', quizzes: [], title: call.body.title, body: call.body.body, order: call.body.order, resources: found }
+      if (badResources(call.body.resource_ids)) return fail(400, 'VALIDATION_ERROR', 'Correct the highlighted fields.', { resource_ids: ['One or more resources are not published or do not exist.'] })
+      if (orderTaken(target, call.body.order)) return fail(400, 'VALIDATION_ERROR', 'Correct the highlighted fields.', { order: ['Another module already has this order.'] })
+      const created = { id: state.nextId++, course_id: target.id, status: 'draft', quizzes: [], title: call.body.title, body: call.body.body, order: call.body.order, attached: call.body.resource_ids }
       modulesOf(target.id).push(created)
-      return ok(created, 'Saved.', { status: 201 })
+      return ok(ser(created), 'Saved.', { status: 201 })
+    }),
+    route('post', '/quiz/classes/:id/modules/reorder/', ({ call, target }) => {
+      const ids = call.body?.module_ids
+      if (!only(call.body, ['module_ids']) || !Array.isArray(ids) || !ids.every(Number.isInteger)) return violation('reorder body must be {module_ids:[ints]}')
+      if (target.status === 'closed') return fail(409, 'CLASS_CLOSED', 'A closed class cannot be edited.')
+      const mine = modulesOf(target.id)
+      const same = ids.length === mine.length && new Set(ids).size === ids.length && mine.every((item) => ids.includes(item.id))
+      if (!same) return fail(400, 'VALIDATION_ERROR', 'module_ids must list every module of the class exactly once.', { module_ids: ['Does not match the class modules.'] })
+      ids.forEach((id, index) => { mine.find((item) => item.id === id).order = index + 1 })
+      return ok(ids.map((id) => ser(mine.find((item) => item.id === id))), 'Saved.')
     }),
     route('get', '/quiz/classes/:id/modules/:moduleId/', ({ params, target }) => {
       const module = modulesOf(target.id).find((item) => String(item.id) === params.moduleId)
-      return module ? ok(module) : fail(404, 'NOT_FOUND', 'Not found.')
+      return module ? ok(ser(module)) : fail(404, 'NOT_FOUND', 'Not found.')
     }),
     route('patch', '/quiz/classes/:id/modules/:moduleId/', ({ call, params, target }) => {
       const module = modulesOf(target.id).find((item) => String(item.id) === params.moduleId)
@@ -144,12 +169,12 @@ export function createClassBackend({ classes = [], modules = {}, enrollments = {
       if (target.status === 'closed') return fail(409, 'CLASS_CLOSED', 'A closed class cannot be edited.')
       const { resource_ids: ids, ...rest } = call.body
       if (ids) {
-        const found = resolve(ids)
-        if (found.length !== ids.length) return fail(400, 'VALIDATION_ERROR', 'Correct the highlighted fields.', { resource_ids: ['One or more resources are not published or do not exist.'] })
-        module.resources = found
+        if (badResources(ids, module.attached)) return fail(400, 'VALIDATION_ERROR', 'Correct the highlighted fields.', { resource_ids: ['One or more resources are not published or do not exist.'] })
+        module.attached = ids
       }
+      if ('order' in rest && orderTaken(target, rest.order, module)) return fail(400, 'VALIDATION_ERROR', 'Correct the highlighted fields.', { order: ['Another module already has this order.'] })
       Object.assign(module, rest)
-      return ok(module, 'Saved.')
+      return ok(ser(module), 'Saved.')
     }),
     route('delete', '/quiz/classes/:id/modules/:moduleId/', ({ params, target }) => {
       const module = modulesOf(target.id).find((item) => String(item.id) === params.moduleId)
@@ -162,12 +187,12 @@ export function createClassBackend({ classes = [], modules = {}, enrollments = {
     route('post', '/quiz/classes/:id/modules/:moduleId/publish/', ({ params, target }) => {
       const module = modulesOf(target.id).find((item) => String(item.id) === params.moduleId)
       module.status = 'published'
-      return ok(module, 'Published.')
+      return ok(ser(module), 'Published.')
     }),
     route('post', '/quiz/classes/:id/modules/:moduleId/unpublish/', ({ params, target }) => {
       const module = modulesOf(target.id).find((item) => String(item.id) === params.moduleId)
       module.status = 'draft'
-      return ok(module, 'Unpublished.')
+      return ok(ser(module), 'Unpublished.')
     }),
 
     route('get', '/quiz/classes/:id/enrollments/', ({ call, target }) => {
@@ -200,7 +225,7 @@ export function createClassBackend({ classes = [], modules = {}, enrollments = {
       const blocked = guard(call)
       if (blocked) return blocked
       const needle = (call.search.search ?? '').toLowerCase()
-      const rows = state.resources.filter((item) => (!call.search.type || item.type === call.search.type) && (!needle || item.title.toLowerCase().includes(needle)))
+      const rows = state.resources.filter((item) => !item.hidden && (!call.search.type || item.type === call.search.type) && (!needle || item.title.toLowerCase().includes(needle)))
       return ok(page(rows, call.search))
     }),
     http.get(url('/accounts/students/'), async ({ request }) => {

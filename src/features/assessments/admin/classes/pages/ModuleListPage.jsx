@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { primaryButton, secondaryButton } from "../../components/styles.js";
 import { Alert, ConfirmDialog, LoadingBlock, StatusBadge } from "../../components/ui.jsx";
@@ -6,7 +6,7 @@ import ClassFrame from "../components/ClassFrame.jsx";
 import { useClassRecord } from "../useClassRecord.js";
 import { describeClassError } from "../classErrors.js";
 import { moveItem } from "../classRules.js";
-import { applyModuleOrder, deleteModule, listModules, publishModule, unpublishModule } from "../classService.js";
+import { deleteModule, listModules, publishModule, reorderModules, unpublishModule } from "../classService.js";
 
 export default function ModuleListPage() {
   const { id } = useParams();
@@ -23,6 +23,7 @@ function Modules({ id }) {
   const [problem, setProblem] = useState(null);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(null); // module to delete
+  const [focusTarget, setFocusTarget] = useState(null); // { id, dir } to restore after a reorder
   const latest = useRef(0);
 
   const load = useCallback(async () => {
@@ -49,8 +50,7 @@ function Modules({ id }) {
       await work();
       setNotice(success);
     } catch (failure) {
-      const described = describeClassError(failure);
-      setProblem(described.message);
+      setProblem(failure?.described ?? describeClassError(failure).message);
       setNotice(null);
     } finally {
       // Whatever happened, show the persisted state rather than a guess.
@@ -59,7 +59,22 @@ function Modules({ id }) {
     }
   }
 
-  const move = (index, delta) => run(() => applyModuleOrder(id, moveItem(modules, index, delta)), "Module order saved.");
+  const move = async (index, delta) => {
+    const moved = modules[index];
+    const next = moveItem(modules, index, delta);
+    await run(
+      () =>
+        reorderModules(
+          id,
+          next.map((module) => module.id),
+        ).catch((failure) => {
+          const described = describeClassError(failure);
+          throw Object.assign(new Error(), { described: `The new order could not be saved, so nothing changed. The list shows the current saved order. ${described.message}` });
+        }),
+      "Module order saved.",
+    );
+    setFocusTarget({ id: moved.id, dir: delta < 0 ? "up" : "down" });
+  };
   const toggle = (module) =>
     run(
       () => (module.status === "published" ? unpublishModule(id, module.id) : publishModule(id, module.id)),
@@ -70,6 +85,14 @@ function Modules({ id }) {
     await run(() => deleteModule(id, module.id), `"${module.title}" deleted.`);
     setConfirm(null);
   };
+
+  // Keep keyboard focus on the moved module's button (the list re-renders after the reload).
+  useLayoutEffect(() => {
+    if (!focusTarget || !modules) return;
+    const pick = (dir) => document.querySelector(`[data-move="${focusTarget.id}-${dir}"]:not([disabled])`);
+    (pick(focusTarget.dir) ?? pick(focusTarget.dir === "up" ? "down" : "up"))?.focus();
+    setFocusTarget(null);
+  }, [focusTarget, modules]);
 
   const manageable = record && !record.legacy && record.status !== "closed";
 
@@ -119,10 +142,10 @@ function Modules({ id }) {
                   </div>
                   {manageable && (
                     <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                      <button type="button" className={secondaryButton} disabled={busy || index === 0} onClick={() => move(index, -1)} aria-label={`Move ${module.title} up`}>
+                      <button type="button" className={secondaryButton} data-move={`${module.id}-up`} disabled={busy || index === 0} onClick={() => move(index, -1)} aria-label={`Move ${module.title} up`}>
                         Move up
                       </button>
-                      <button type="button" className={secondaryButton} disabled={busy || index === modules.length - 1} onClick={() => move(index, 1)} aria-label={`Move ${module.title} down`}>
+                      <button type="button" className={secondaryButton} data-move={`${module.id}-down`} disabled={busy || index === modules.length - 1} onClick={() => move(index, 1)} aria-label={`Move ${module.title} down`}>
                         Move down
                       </button>
                       <Link to={`/admin/classes/${id}/modules/${module.id}`} className={`${secondaryButton} text-center`} aria-label={`Edit ${module.title}`}>
