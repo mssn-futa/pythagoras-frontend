@@ -147,7 +147,7 @@ function ResourceDetail({ eventId, resourceId }) {
         <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Publication</h2>
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
           {published
-            ? "Visible to readers while its event is published. Unpublish to hide it, replace its audio or delete it."
+            ? `Visible to readers while its event is published. Unpublish to hide it, replace its ${isVideo ? "link" : "audio"} or delete it.`
             : isVideo
               ? "Publishing needs a saved YouTube link and a published event. The server checks both. This does not publish anything on YouTube."
               : "Publishing needs ready audio and a published event. The server checks both."}

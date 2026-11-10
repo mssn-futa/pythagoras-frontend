@@ -12,6 +12,7 @@ import { Alert, Card, Field, primaryButton } from "./ui.jsx";
  * link is not confirmation that the video can be played.
  */
 export default function VideoLinkPanel({ eventId, resource, onSaved }) {
+  const published = resource.status === "published";
   const [url, setUrl] = useState("");
   const [error, setError] = useState(null);
   const [clientError, setClientError] = useState(null);
@@ -59,6 +60,9 @@ export default function VideoLinkPanel({ eventId, resource, onSaved }) {
       ) : (
         <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">No valid YouTube link is saved yet.</p>
       )}
+      {published ? (
+        <p className="mt-4 text-sm text-gray-700 dark:text-gray-300">Unpublish to replace the link.</p>
+      ) : (
       <form onSubmit={submit} noValidate className="mt-4 space-y-3" aria-label="YouTube link form">
         <Alert>{message}</Alert>
         {saved && <Alert tone="success">YouTube link saved.</Alert>}
@@ -76,6 +80,7 @@ export default function VideoLinkPanel({ eventId, resource, onSaved }) {
         />
         <button type="submit" disabled={saving} className={primaryButton}>{saving ? "Saving…" : "Save link"}</button>
       </form>
+      )}
       <p className="mt-3 text-xs text-gray-600 dark:text-gray-400">
         This only stores a link to an existing video. Nothing is uploaded or published to YouTube, and a saved link does not confirm that the video can be played.
       </p>

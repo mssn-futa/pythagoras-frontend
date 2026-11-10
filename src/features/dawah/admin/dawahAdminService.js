@@ -1,5 +1,6 @@
 import { api, ApiError } from "../../../services/api";
 import { AUDIO_CONTENT_TYPE, LIST_PAGE_SIZE_MAX, PAGE_SIZE } from "./constants.js";
+import { guessVideoId } from "./youtubeLink.js";
 import { lagosLocalToUtcIso, utcIsoToLagosLocal } from "./time.js";
 
 /*
@@ -249,7 +250,15 @@ export async function createVideoResourceSafely(eventId, values) {
     } catch {
       throw unconfirmed("draft");
     }
-    if (found) return found;
+    if (found) {
+      const expected = guessVideoId(values.youtubeUrl);
+      if (expected && found.playback?.video_id === expected) return found;
+      throw new ApiError({
+        status: 0,
+        code: "SAVE_UNCONFIRMED",
+        message: "A draft with this title exists, but its YouTube link could not be matched to the one you entered. Open the draft in the resource list and verify or replace its link before saving again.",
+      });
+    }
     throw error;
   }
 }

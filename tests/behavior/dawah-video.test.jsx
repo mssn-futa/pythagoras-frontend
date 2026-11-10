@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { http } from 'msw'
+import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { fail, ok, resetSession, url, useApiOrigin } from '../fixtures/auth.js'
 import { audio, event, page, publicHandlers } from '../fixtures/dawah.js'
@@ -10,6 +10,8 @@ import { server } from '../mocks/server.js'
 import { setSessionTokens } from '../../src/services/api/session.js'
 import { listArchive } from '../../src/features/dawah/public/api/dawahPublicService.js'
 import { safeEmbedUrl, safePlayback, safeWatchUrl } from '../../src/features/dawah/public/lib/youtube.js'
+import PlayableResource from '../../src/features/dawah/public/components/PlayableResource.jsx'
+import { mapResource } from '../../src/features/dawah/public/api/dawahPublicService.js'
 import VideoEmbed from '../../src/features/dawah/public/components/VideoEmbed.jsx'
 
 const ID = 'abcdefghijk'
@@ -54,6 +56,8 @@ describe('youtube validation helpers', () => {
     ]
     for (const value of bad) expect(safeEmbedUrl(value, ID), String(value)).toBeNull()
     expect(safeEmbedUrl(`https://www.youtube-nocookie.com/embed/${ID}`, 'short')).toBeNull()
+    // Canonical rebuild from the ID, not the parsed server text.
+    expect(safeEmbedUrl(`HTTPS://WWW.YOUTUBE-NOCOOKIE.COM/embed/${ID}`, ID)).toBe(`https://www.youtube-nocookie.com/embed/${ID}`)
   })
 
   test('accepts only the canonical watch URL for the same ID', () => {
@@ -87,8 +91,8 @@ describe('VideoEmbed', () => {
     expect(frame).toHaveAttribute('referrerpolicy', 'strict-origin-when-cross-origin')
     expect(frame).toHaveAttribute('allowfullscreen')
     expect(frame.getAttribute('allow')).toContain('fullscreen')
-    expect(frame.getAttribute('sandbox')).not.toContain('allow-top-navigation')
-    expect(frame.getAttribute('sandbox')).not.toContain('allow-forms')
+    expect(frame.getAttribute('sandbox').split(' ').sort()).toEqual(['allow-popups', 'allow-popups-to-escape-sandbox', 'allow-presentation', 'allow-same-origin', 'allow-scripts'])
+    expect(frame.getAttribute('allow')).toBe('fullscreen; picture-in-picture; encrypted-media')
     expect(frame.parentElement.className).toContain('aspect-video')
     const link = screen.getByRole('link', { name: 'Watch on YouTube' })
     expect(link).toHaveAttribute('href', `https://www.youtube.com/watch?v=${ID}`)
@@ -120,6 +124,14 @@ describe('VideoEmbed', () => {
     const { container } = render(<VideoEmbed playback={null} title="x" />)
     expect(container.querySelector('iframe, a')).toBeNull()
     expect(screen.getByRole('status')).toHaveTextContent('not available')
+  })
+})
+
+describe('non-published video', () => {
+  test.each(['draft', 'unpublished'])('PlayableResource renders no iframe or link for a %s video', (status) => {
+    const { container } = render(<PlayableResource resource={mapResource(video(19, { status }))} />)
+    expect(container.querySelector('iframe, a')).toBeNull()
+    expect(screen.getByText('This video is not available right now.')).toBeInTheDocument()
   })
 })
 
@@ -286,5 +298,46 @@ describe('admin link entry', () => {
     const link = await screen.findByRole('link', { name: 'Add video link' })
     expect(link).toHaveAttribute('href', '/admin/events/3/resources/new?type=vid')
     expect(within(document.body).queryByText(/Add video link/)).toBeTruthy()
+  })
+
+  test('a published video hides the replace form and says to unpublish', async () => {
+    renderAdminApp('/admin/events/3/resources/19', [
+      eventHandler,
+      http.get(url('/dawah/events/3/resources/19/'), () => ok(rawResource({ id: 19, type: 'vid', status: 'published', storage_status: 'not_applicable', playback: playback() }))),
+    ])
+    expect(await screen.findByText('Unpublish to replace the link.')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/YouTube link/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Save link' })).not.toBeInTheDocument()
+    expect(screen.getByText(/replace its link or delete it/)).toBeInTheDocument()
+    expect(screen.queryByText(/replace its audio/)).not.toBeInTheDocument()
+  })
+
+  async function lostCreate(recovered) {
+    const posts = []
+    renderAdminApp('/admin/events/3/resources/new?type=vid', [
+      eventHandler,
+      http.post(url('/dawah/events/3/resources/'), () => { posts.push(1); return HttpResponse.error() }),
+      http.get(url('/dawah/events/3/resources/'), () => ok(paged([recovered]))),
+      http.get(url('/dawah/events/3/resources/31/'), () => ok(recovered)),
+    ])
+    const user = userEvent.setup()
+    await user.type(await screen.findByLabelText('Title'), 'Recorded lecture')
+    await user.type(screen.getByLabelText('YouTube link'), `https://youtu.be/${ID}`)
+    await user.click(screen.getByRole('button', { name: 'Save draft' }))
+    return posts
+  }
+  const recoveredDraft = (pb) => rawResource({ id: 31, type: 'vid', title: 'Recorded lecture', storage_status: 'not_applicable', playback: pb })
+
+  test('a draft recovered after a lost create is accepted when its video ID matches', async () => {
+    const posts = await lostCreate(recoveredDraft(playback()))
+    expect(await screen.findByText(/Draft saved with the YouTube link/)).toBeInTheDocument()
+    expect(location()).toBe('/admin/events/3/resources/31')
+    expect(posts).toHaveLength(1)
+  })
+
+  test.each([['a different video ID', playback({ video_id: 'zzzzzzzzzzz' })], ['no playback', null]])('a recovered draft with %s asks the admin to verify the link', async (_n, pb) => {
+    await lostCreate(recoveredDraft(pb))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not be matched.*verify or replace its link/i)
+    expect(location()).toBe('/admin/events/3/resources/new?type=vid')
   })
 })

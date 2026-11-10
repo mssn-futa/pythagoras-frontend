@@ -27,7 +27,8 @@ export const isVideoId = (value) => typeof value === 'string' && VIDEO_ID.test(v
 export function safeEmbedUrl(value, videoId) {
   const parsed = parseHttps(value, EMBED_HOST)
   if (!parsed || !isVideoId(videoId) || parsed.search) return null
-  return parsed.pathname === `/embed/${videoId}` ? parsed.href : null
+  // Validated, then rebuilt from the ID: the returned string is canonical, never the parsed server text.
+  return parsed.pathname === `/embed/${videoId}` ? `https://${EMBED_HOST}/embed/${videoId}` : null
 }
 
 /** Returns the watch URL only for https://www.youtube.com/watch?v=<id> matching `videoId`, else null. */
@@ -35,7 +36,7 @@ export function safeWatchUrl(value, videoId) {
   const parsed = parseHttps(value, WATCH_HOST)
   if (!parsed || !isVideoId(videoId) || parsed.pathname !== '/watch') return null
   const keys = [...parsed.searchParams.keys()]
-  return keys.length === 1 && parsed.searchParams.get('v') === videoId ? parsed.href : null
+  return keys.length === 1 && parsed.searchParams.get('v') === videoId ? `https://${WATCH_HOST}/watch?v=${videoId}` : null
 }
 
 /**
