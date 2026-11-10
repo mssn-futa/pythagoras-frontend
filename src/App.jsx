@@ -1,64 +1,59 @@
-import React from "react";
 import { Route, Routes } from "react-router-dom";
-import Home from "./pages/home/Home";
-import Register from "./pages/register/Register";
-import VerificationCode from "./pages/verificationCode/VerificationCode";
-import AccountActivation from "./pages/accountActivation/AccountActivation";
-import CreateProfile from "./pages/createProfile/CreateProfile";
-import ProfileVerification from "./pages/profileVerification/ProfileVerification";
-import Login from "./pages/login/Login";
-import Layout from "./components/layout/Layout";
-import Dawah from "./pages/dawah/Dawah";
-import Academics from "./pages/academics/Academics";
-import Empowerment from "./pages/empowerment/Empowerment";
-import Profile from "./pages/profile/Profile";
 import AdminLayout from "./components/layout/AdminLayout";
+import Layout from "./components/layout/Layout";
+import { RedirectIfAuthenticated, RequireAdmin, RequireAuth } from "./features/auth/guards.jsx";
 import AdminDashboard from "./pages/admin/AdminDashboard";
-import StudentDashboard from './pages/admin/student/StudentDashboard';
+import StudentDashboard from "./pages/admin/student/StudentDashboard";
+import Login from "./pages/login/Login";
+import NotFound from "./pages/notFound/NotFound";
+import Profile from "./pages/profile/Profile";
+import Register from "./pages/register/Register";
 import Homepage from "./pages/student/HomePage";
-import QuizLayout from "./components/layout/QuizLayout";
-import CreateQuiz from "./pages/admin/quizzes/CreateQuiz";
-import QuizResult from "./pages/admin/quizzes/QuizResult";
-import AllQuiz from "./pages/admin/quizzes/AllQuiz";
-import Student from "./pages/admin/quizzes/Student";
+import { renderRoutes, splitPublicRoutes } from "./routes/renderRoutes.jsx";
+import { adminSlotRoutes, studentSlotRoutes } from "./routes/slots.js";
 
-const App = () => {
+/*
+ * Root routing (owned by PLAT-04). Domain packages add pages ONLY through
+ * their slot modules in src/features/{dawah,assessments,communication}/.
+ * Unavailable or deferred prototypes (verification flow, /academics,
+ * /empowerment, sample-data /dawah and /admin/quizzes pages) stay unmounted.
+ */
+export function AppRoutes({ adminRoutes = adminSlotRoutes, studentRoutes = studentSlotRoutes }) {
+  const { publicRoutes, protectedRoutes } = splitPublicRoutes(studentRoutes);
   return (
-    <>
-      <Routes>
-        <Route path="/sign-up" element={<Register />} />
+    <Routes>
+      <Route element={<RedirectIfAuthenticated />}>
         <Route path="/sign-in" element={<Login />} />
-        <Route path="/verification-code" element={<VerificationCode />} />
-        <Route path="/account-activation" element={<AccountActivation />} />
-        <Route path="/create-profile" element={<CreateProfile />} />
-        <Route path="/profile-verified" element={<ProfileVerification />} />
+        <Route path="/sign-up" element={<Register />} />
+      </Route>
 
+      <Route element={<RequireAuth />}>
         <Route path="/" element={<Layout />}>
           <Route index element={<Homepage />} />
-          <Route path="dawah" element={<Dawah />} />
-          <Route path="academics" element={<Academics />} />
-          <Route path="empowerment" element={<Empowerment />} />
           <Route path="profile" element={<Profile />} />
+          {renderRoutes(protectedRoutes, "student")}
         </Route>
+      </Route>
 
-        <Route path="/admin">
-          {/* Admin layout routes */}
-          <Route element={<AdminLayout />}>
-            <Route index element={<AdminDashboard />} />
-            <Route path="students" element={<StudentDashboard />} />
-          </Route>
-
-          {/* Quiz layout route */}
-          <Route path="quizzes" element={<QuizLayout />}>
-            <Route index element={<CreateQuiz />} />
-            <Route path="results" element={<QuizResult />} />
-            <Route path="all" element={<AllQuiz />} />
-            <Route path="students" element={<Student />} />
-          </Route>
+      {publicRoutes.length > 0 && (
+        <Route path="/" element={<Layout />}>
+          {renderRoutes(publicRoutes, "public")}
         </Route>
-      </Routes>
-    </>
+      )}
+
+      <Route path="/admin" element={<RequireAdmin />}>
+        <Route element={<AdminLayout />}>
+          <Route index element={<AdminDashboard />} />
+          <Route path="students" element={<StudentDashboard />} />
+          {renderRoutes(adminRoutes, "admin")}
+        </Route>
+      </Route>
+
+      <Route path="*" element={<NotFound />} />
+    </Routes>
   );
-};
+}
+
+const App = () => <AppRoutes />;
 
 export default App;
