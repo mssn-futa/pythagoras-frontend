@@ -26,7 +26,7 @@ test('admin uploads audio directly to storage (no bearer), sees server-validated
     route.fulfill({ status, headers: cors, contentType: 'application/json', body: JSON.stringify({ success: true, data, message: 'OK.' }) })
 
   const resource = { id: 8, event_id: 3, title: 'Patience', type: 'aud', status: 'draft', storage_status: 'none', media_url: null }
-  const seen = { put: [], preflight: [], finalize: 0, intents: 0 }
+  const seen = { put: [], finalize: 0, intents: 0 }
 
   await page.route('https://fonts.googleapis.com/**', (route) => route.fulfill({ contentType: 'text/css', body: '' }))
   await page.addInitScript(() => sessionStorage.setItem('pythagoras.refreshToken', 'refresh-0'))
@@ -64,7 +64,6 @@ test('admin uploads audio directly to storage (no bearer), sees server-validated
     const headers = await request.allHeaders()
     const r2Cors = { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Allow-Methods': 'PUT, GET, OPTIONS', 'Access-Control-Expose-Headers': 'ETag' }
     if (request.method() === 'OPTIONS') {
-      seen.preflight.push(headers['access-control-request-headers'] ?? '')
       return route.fulfill({ status: 204, headers: r2Cors })
     }
     if (request.method() === 'PUT') {
@@ -84,9 +83,9 @@ test('admin uploads audio directly to storage (no bearer), sees server-validated
   expect(seen.intents).toBe(1)
   expect(seen.finalize).toBe(1)
   expect(seen.put).toEqual([{ authorization: null, cookie: null, contentType: 'audio/mpeg', size: 4096 }])
-  // A cross-origin PUT with Content-Type must be preflighted; require it so the check below is meaningful.
-  expect(seen.preflight.length).toBeGreaterThanOrEqual(1)
-  for (const requested of seen.preflight) expect(requested.toLowerCase()).not.toContain('authorization')
+  // Playwright does not surface CORS preflights to page.route handlers for fulfilled routes
+  // (an earlier "at least one preflight" assertion proved vacuous: 0 were routed), so the
+  // proof of no credentials is the actual PUT request's headers asserted above.
 
   await page.getByRole('button', { name: 'Publish resource' }).click()
   await expect(page.getByText('Resource published.')).toBeVisible()
