@@ -1,4 +1,5 @@
 import { Link, useParams } from 'react-router-dom'
+import { categoryLabel } from '../../categories.js'
 import { getEvent } from '../api/dawahPublicService.js'
 import EventImage from '../components/EventImage.jsx'
 import ResourceRenderer from '../components/ResourceRenderer.jsx'
@@ -40,7 +41,7 @@ export default function EventDetailPage() {
             <EventImage event={data.event} className="mb-4 max-h-80" />
             <h1 className="text-2xl font-bold text-[#1F2937] dark:text-white">{data.event.title}</h1>
             <p className="mt-1 text-sm text-[#6B7280] dark:text-gray-300">
-              {[formatDateTime(data.event.startTime), data.event.location, data.event.speakers].filter(Boolean).join(' · ')}
+              {[categoryLabel(data.event.category), formatDateTime(data.event.startTime), data.event.location, data.event.speakers].filter(Boolean).join(' · ')}
             </p>
             {data.event.summary && <p className="mt-3 font-medium text-[#374151] dark:text-gray-200">{data.event.summary}</p>}
             {data.event.description && <p className="mt-2 whitespace-pre-line text-sm text-[#374151] dark:text-gray-200">{data.event.description}</p>}
