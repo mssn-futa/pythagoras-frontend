@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { listQuizzes } from "../adminQuizService.js";
 import { formatLagos } from "../dates.js";
@@ -19,15 +19,18 @@ export default function QuizListPage() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const latest = useRef(0);
   const load = useCallback(async () => {
+    const token = ++latest.current; // only the newest request may update the screen
     setLoading(true);
     setError(null);
     try {
-      setData(await listQuizzes({ status, page, pageSize: PAGE_SIZE }));
+      const loaded = await listQuizzes({ status, page, pageSize: PAGE_SIZE });
+      if (token === latest.current) setData(loaded);
     } catch (failure) {
-      setError(describeAssessmentError(failure).message);
+      if (token === latest.current) setError(describeAssessmentError(failure).message);
     } finally {
-      setLoading(false);
+      if (token === latest.current) setLoading(false);
     }
   }, [status, page]);
 

@@ -73,7 +73,7 @@ export default function QuestionEditor({ initial, heading, saveLabel, onSave, on
         <FieldError id="question-points-error">{pointsError}</FieldError>
       </div>
 
-      <fieldset>
+      <fieldset aria-describedby={[optionsError && "options-error", errors.correct && "correct-error"].filter(Boolean).join(" ") || undefined}>
         <legend className="mb-2 text-sm font-medium text-gray-700">
           Options ({OPTION_COUNT}, all different). Select the radio button next to the correct answer.
         </legend>
@@ -87,6 +87,7 @@ export default function QuestionEditor({ initial, heading, saveLabel, onSave, on
                     type="radio"
                     name="correct-option"
                     aria-label={`Option ${LETTERS[index]} is correct`}
+                    aria-describedby={errors.correct ? "correct-error" : undefined}
                     checked={draft.correctIndex === index}
                     onChange={() => setDraft({ ...draft, correctIndex: index })}
                     className="h-5 w-5 shrink-0 accent-[#2A742F]"
@@ -98,16 +99,17 @@ export default function QuestionEditor({ initial, heading, saveLabel, onSave, on
                     value={option.text}
                     onChange={(event) => setOption(index, event.target.value)}
                     aria-invalid={Boolean(message)}
+                    aria-describedby={message ? `option-${index}-error` : undefined}
                     className={inputClass(message)}
                   />
                 </div>
-                <FieldError>{message}</FieldError>
+                <FieldError id={`option-${index}-error`}>{message}</FieldError>
               </div>
             );
           })}
         </div>
-        <FieldError>{optionsError}</FieldError>
-        <FieldError>{errors.correct}</FieldError>
+        <FieldError id="options-error">{optionsError}</FieldError>
+        <FieldError id="correct-error">{errors.correct}</FieldError>
       </fieldset>
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">

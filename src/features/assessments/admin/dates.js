@@ -14,6 +14,9 @@ export function lagosInputToIso(value) {
   const utc = Date.UTC(year, month - 1, day, hour, minute) - LAGOS_OFFSET_MS;
   const date = new Date(utc);
   if (Number.isNaN(date.getTime())) return null;
+  // Reject impossible calendar values (month 13, 30 February, 25:00) instead of rolling over.
+  const check = new Date(utc + LAGOS_OFFSET_MS);
+  if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day || check.getUTCHours() !== hour || check.getUTCMinutes() !== minute) return null;
   return `${date.toISOString().slice(0, 16)}:00Z`;
 }
 

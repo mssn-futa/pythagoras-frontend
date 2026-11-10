@@ -10,7 +10,7 @@ const STATUS_STYLES = {
 export function StatusBadge({ status }) {
   return (
     <span className={`inline-block rounded-full px-3 py-1 text-xs font-semibold capitalize ${STATUS_STYLES[status] ?? STATUS_STYLES.closed}`}>
-      {status}
+      {status ?? "unknown"}
     </span>
   );
 }
@@ -40,19 +40,45 @@ export function FieldError({ id, children }) {
 
 
 export function ConfirmDialog({ title, children, confirmLabel, tone = "primary", busy = false, onConfirm, onCancel }) {
+  const dialogRef = useRef(null);
   const cancelRef = useRef(null);
+  const latest = useRef({ busy, onCancel });
   useEffect(() => {
+    latest.current = { busy, onCancel };
+  });
+
+  // Mount-only: focus Cancel, trap Tab inside the dialog, Escape closes, focus returns to the opener.
+  useEffect(() => {
+    const opener = document.activeElement;
     cancelRef.current?.focus();
     const onKey = (event) => {
-      if (event.key === "Escape" && !busy) onCancel();
+      if (event.key === "Escape" && !latest.current.busy) {
+        latest.current.onCancel();
+      } else if (event.key === "Tab" && dialogRef.current) {
+        const focusable = [...dialogRef.current.querySelectorAll("button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex='-1'])")];
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const inside = dialogRef.current.contains(document.activeElement);
+        if (event.shiftKey && (document.activeElement === first || !inside)) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && (document.activeElement === last || !inside)) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
     };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [busy, onCancel]);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
+    };
+  }, []);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
-      <div role="dialog" aria-modal="true" aria-labelledby="confirm-title" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="confirm-title" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
         <h2 id="confirm-title" className="text-lg font-semibold text-gray-800">
           {title}
         </h2>

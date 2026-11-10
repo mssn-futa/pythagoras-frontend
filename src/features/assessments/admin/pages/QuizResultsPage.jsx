@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { getQuiz, getResult, listQuizResults } from "../adminQuizService.js";
 import { formatLagos } from "../dates.js";
@@ -67,17 +67,20 @@ export default function QuizResultsPage() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
 
+  const latest = useRef(0);
   const load = useCallback(async () => {
+    const token = ++latest.current; // ignore responses for an older page/quiz
     setLoading(true);
     setError(null);
     try {
       const [loadedQuiz, results] = await Promise.all([getQuiz(id), listQuizResults(id, { page, pageSize: PAGE_SIZE })]);
+      if (token !== latest.current) return;
       setQuiz(loadedQuiz);
       setData(results);
     } catch (failure) {
-      setError(describeAssessmentError(failure).message);
+      if (token === latest.current) setError(describeAssessmentError(failure).message);
     } finally {
-      setLoading(false);
+      if (token === latest.current) setLoading(false);
     }
   }, [id, page]);
 

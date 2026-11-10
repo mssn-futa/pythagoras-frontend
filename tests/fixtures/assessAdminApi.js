@@ -1,6 +1,31 @@
 import { http, HttpResponse } from 'msw'
 import { ok, fail, url } from './auth.js'
 
+const only = (value, keys) => value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).every((key) => keys.includes(key))
+const isIso = (v) => v === null || (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(v))
+const isIntOrNull = (v) => v === null || Number.isInteger(v)
+
+/** Contract shapes the lead froze; any unknown key or wrong type is a violation. */
+export function quizBodyViolation(body, { draft, create }) {
+  const keys = draft ? ['title', 'description', 'time_limit', 'deadline', ...(create ? ['related_event'] : [])] : ['title', 'description']
+  if (!only(body, keys)) return `quiz body keys ${JSON.stringify(Object.keys(body ?? {}))}`
+  if ('title' in body && typeof body.title !== 'string') return 'title type'
+  if ('description' in body && typeof body.description !== 'string') return 'description type'
+  if ('time_limit' in body && !isIntOrNull(body.time_limit)) return 'time_limit type'
+  if ('deadline' in body && !isIso(body.deadline)) return 'deadline must be UTC ISO with Z'
+  if ('related_event' in body && !isIntOrNull(body.related_event)) return 'related_event must be an integer pk'
+  return null
+}
+
+export function questionBodyViolation(body) {
+  if (!only(body, ['type', 'text', 'points', 'order', 'options'])) return `question keys ${JSON.stringify(Object.keys(body ?? {}))}`
+  if (body.type !== 'mcq' || typeof body.text !== 'string' || !Number.isInteger(body.points) || body.points < 1 || !Number.isInteger(body.order)) return 'question field types'
+  if (!Array.isArray(body.options) || body.options.length !== 4) return 'exactly four options'
+  if (!body.options.every((o) => only(o, ['text', 'order', 'is_correct']) && typeof o.text === 'string' && Number.isInteger(o.order) && typeof o.is_correct === 'boolean')) return 'option keys (no id allowed)'
+  if (body.options.filter((o) => o.is_correct).length !== 1) return 'exactly one correct'
+  return null
+}
+
 /**
  * Stateful in-memory stand-in for the D3 admin quiz API (synthetic data only).
  * Mirrors the contract assumptions in adminQuizService.js, including 409
@@ -12,6 +37,7 @@ export function createQuizBackend({ quizzes = [], results = {} } = {}) {
     results: structuredClone(results),
     calls: [],
     nextId: 100,
+    violations: [],
     failNext: null, // { method, pattern, response }
   }
   const find = (id) => state.quizzes.find((quiz) => String(quiz.id) === String(id))
@@ -26,6 +52,10 @@ export function createQuizBackend({ quizzes = [], results = {} } = {}) {
     }
     state.calls.push(call)
     return call
+  }
+  const violation = (what) => {
+    state.violations.push(what)
+    return fail(400, 'CONTRACT_VIOLATION', `Test contract violation: ${what}`)
   }
   const guard = (call) => {
     const planned = state.failNext
@@ -55,6 +85,8 @@ export function createQuizBackend({ quizzes = [], results = {} } = {}) {
       const call = await record(request)
       const blocked = guard(call)
       if (blocked) return blocked
+      const bad = quizBodyViolation(call.body, { draft: true, create: true })
+      if (bad) return violation(bad)
       const quiz = { id: state.nextId++, status: 'draft', type: 'arabic', published_at: null, questions: [], ...call.body }
       state.quizzes.push(quiz)
       return ok(withSummary(quiz), 'Saved.', { status: 201 })
@@ -72,6 +104,8 @@ export function createQuizBackend({ quizzes = [], results = {} } = {}) {
       if (blocked) return blocked
       const quiz = find(params.id)
       if (quiz.status !== 'draft' && Object.keys(call.body).some((key) => !['title', 'description'].includes(key))) return immutable()
+      const bad = quizBodyViolation(call.body, { draft: quiz.status === 'draft', create: false })
+      if (bad) return violation(bad)
       Object.assign(quiz, call.body)
       return ok(quiz, 'Saved.')
     }),
@@ -88,6 +122,8 @@ export function createQuizBackend({ quizzes = [], results = {} } = {}) {
       if (blocked) return blocked
       const quiz = find(params.id)
       if (quiz.status !== 'draft') return immutable()
+      const bad = questionBodyViolation(call.body)
+      if (bad) return violation(bad)
       const question = {
         id: state.nextId++,
         ...call.body,
@@ -103,7 +139,10 @@ export function createQuizBackend({ quizzes = [], results = {} } = {}) {
       const quiz = state.quizzes.find((candidate) => candidate.questions.some((q) => String(q.id) === params.id))
       if (quiz.status !== 'draft') return immutable()
       const question = quiz.questions.find((q) => String(q.id) === params.id)
-      Object.assign(question, call.body)
+      const bad = questionBodyViolation(call.body)
+      if (bad) return violation(bad)
+      // The server keeps persisted option IDs by position; the client never sends them.
+      Object.assign(question, call.body, { options: call.body.options.map((o, i) => ({ id: question.options[i]?.id ?? state.nextId++, ...o })) })
       return ok(question)
     }),
     http.delete(url('/quiz/question/:id/'), async ({ request, params }) => {

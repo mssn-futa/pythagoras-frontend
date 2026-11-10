@@ -1,3 +1,5 @@
+import { lagosInputToIso } from "./dates.js";
+
 /**
  * Client-side mirror of the D3 authoring rules. The server is authoritative;
  * these checks only save a round trip and point at the field to fix.
@@ -8,9 +10,9 @@ export const TIME_LIMIT_MIN = 1;
 export const TIME_LIMIT_MAX = 180;
 export const STATUSES = ["draft", "published", "closed"];
 
-/** Normalized form used to detect duplicate options (assumption: trim, collapse spaces, case-fold). */
+/** Normalized form used to detect duplicate options (trim, collapse internal whitespace, case-insensitive). */
 export function normalizeOptionText(text) {
-  return String(text ?? "").normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase();
+  return String(text ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
 }
 
 const isPositiveInteger = (value) => Number.isInteger(value) && value > 0;
@@ -74,6 +76,7 @@ export const hasErrors = (errors) =>
 export function validateQuizDetails(form) {
   const errors = {};
   if (!form.title.trim()) errors.title = "Enter a title.";
+  if (String(form.deadline ?? "").trim() && !lagosInputToIso(form.deadline)) errors.deadline = "Enter a valid date and time.";
   const limit = String(form.time_limit ?? "").trim();
   if (limit) {
     const value = /^\d+$/.test(limit) ? Number(limit) : Number.NaN;
@@ -88,6 +91,9 @@ export function validateQuizDetails(form) {
 export function publishBlockers(quiz, { now = Date.now() } = {}) {
   const blockers = [];
   if (!quiz.questions.length) blockers.push("Add at least one question.");
+  quiz.questions.forEach((question, index) => {
+    if (question.legacy) blockers.push(`Question ${index + 1} is a legacy question this release cannot publish. Delete it.`);
+  });
   if (!isPositiveInteger(quiz.timeLimit)) blockers.push("Set a time limit in minutes.");
   if (!quiz.deadline) blockers.push("Set a deadline.");
   else if (Date.parse(quiz.deadline) <= now) blockers.push("The deadline must be in the future.");

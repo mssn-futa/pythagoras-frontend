@@ -1,17 +1,25 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { http } from 'msw'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { server } from '../mocks/server.js'
-import { admin, fail, recorder, resetSession, sessionHandlers, storeRefreshToken, student, useApiOrigin } from '../fixtures/auth.js'
+import { admin, fail, ok, recorder, resetSession, sessionHandlers, storeRefreshToken, student, url, useApiOrigin } from '../fixtures/auth.js'
 import { TestApp } from '../fixtures/TestApp.jsx'
 import { createQuizBackend, draftQuiz } from '../fixtures/assessAdminApi.js'
 
+let activeBackend = null
 beforeEach(useApiOrigin)
-afterEach(resetSession)
+afterEach(() => {
+  resetSession()
+  // Every request body must match the frozen contract shapes (unknown keys rejected).
+  expect(activeBackend?.state.violations ?? []).toEqual([])
+  activeBackend = null
+})
 
 const location = () => screen.getByTestId('location').textContent
 
 function open(path, backend, user = admin) {
+  activeBackend = backend
   server.use(...sessionHandlers(recorder(), user), ...backend.handlers)
   storeRefreshToken()
   render(<TestApp path={path} />)
@@ -207,7 +215,7 @@ describe('draft editor', () => {
     expect([body.order, body.points]).toEqual([3, 1])
   })
 
-  test('editing keeps the persisted option IDs, order and points; delete asks first', async () => {
+  test('editing sends the D3 question body (no option ids), keeps order and points; delete asks first', async () => {
     const backend = createQuizBackend({ quizzes: [draftQuiz()] })
     open('/admin/quizzes/5', backend)
     const actor = userEvent.setup()
@@ -221,7 +229,8 @@ describe('draft editor', () => {
     await screen.findByText('Question updated.')
     const call = backend.callsTo('PATCH', '/quiz/question/10/')[0]
     expect(call.body).toMatchObject({ type: 'mcq', text: 'Greeting (revised)', points: 2, order: 1 })
-    expect(call.body.options.map((o) => [o.id, o.order, o.is_correct])).toEqual([[100, 1, false], [101, 2, false], [102, 3, true], [103, 4, false]])
+    expect(call.body.options.map((o) => [o.order, o.is_correct])).toEqual([[1, false], [2, false], [3, true], [4, false]])
+    expect(call.body.options.every((o) => !('id' in o))).toBe(true)
 
     await actor.click(screen.getByRole('button', { name: 'Delete question 2' }))
     expect(backend.callsTo('DELETE', '/quiz/question/')).toHaveLength(0)
@@ -262,7 +271,7 @@ describe('draft editor', () => {
     expect(screen.queryByRole('form', { name: 'Edit question 1' })).toBeNull()
   })
 
-  test('details save sends the full draft payload including related_event', async () => {
+  test('details save sends the draft payload without touching related_event', async () => {
     const backend = createQuizBackend({ quizzes: [draftQuiz()] })
     open('/admin/quizzes/5', backend)
     const actor = userEvent.setup()
@@ -271,7 +280,7 @@ describe('draft editor', () => {
     await actor.click(screen.getByRole('button', { name: 'Save draft details' }))
     await screen.findByText('Draft saved.')
     expect(backend.callsTo('PATCH', '/quiz/quizzes/5/')[0].body).toEqual({
-      title: 'Renamed', description: 'Weekly assessment', time_limit: 30, deadline: '2099-10-12T20:00:00Z', related_event: null,
+      title: 'Renamed', description: 'Weekly assessment', time_limit: 30, deadline: '2099-10-12T20:00:00Z',
     })
   })
 
@@ -410,5 +419,209 @@ describe('results', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('The server had a problem.')
     await userEvent.setup().click(screen.getByRole('button', { name: 'Try again' }))
     expect(await screen.findByText('Amina Yusuf')).toBeVisible()
+  })
+})
+
+describe('review fixes', () => {
+  const addQuestion = async (actor, text = 'Third') => {
+    await actor.click(await screen.findByRole('button', { name: 'Add question' }))
+    const q = within(screen.getByRole('form', { name: 'New question' }))
+    await actor.type(q.getByLabelText('Question'), text)
+    for (const letter of ['A', 'B', 'C', 'D']) await actor.type(q.getByLabelText(`Option ${letter}`), `${text}-${letter}`)
+    await actor.click(q.getByLabelText('Option A is correct'))
+    await actor.click(q.getByRole('button', { name: 'Add question' }))
+    await screen.findByText('Question added.')
+  }
+
+  test('unsaved detail edits survive adding, editing and deleting a question', async () => {
+    const backend = createQuizBackend({ quizzes: [draftQuiz()] })
+    open('/admin/quizzes/5', backend)
+    const actor = userEvent.setup()
+    await actor.type(await screen.findByLabelText('Title'), ' (unsaved)')
+    await addQuestion(actor)
+    expect(screen.getByLabelText('Title')).toHaveValue('Arabic week 1 (unsaved)')
+    expect(screen.getByRole('button', { name: 'Save draft details' })).toBeEnabled()
+    expect(screen.getByRole('heading', { name: /Questions \(3\)/ })).toBeVisible()
+
+    await actor.click(screen.getByRole('button', { name: 'Delete question 3' }))
+    await actor.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete question' }))
+    await screen.findByText('Question deleted.')
+    expect(screen.getByLabelText('Title')).toHaveValue('Arabic week 1 (unsaved)')
+    expect(screen.getByRole('button', { name: 'Publish quiz' })).toBeDisabled() // dirty details block publish
+  })
+
+  test('QUIZ_IMMUTABLE on details save keeps title/description edits to resubmit as a correction', async () => {
+    const backend = createQuizBackend({ quizzes: [draftQuiz()] })
+    open('/admin/quizzes/5', backend)
+    const actor = userEvent.setup()
+    await actor.type(await screen.findByLabelText('Title'), ' v2')
+    await actor.clear(screen.getByLabelText(/Time limit/))
+    await actor.type(screen.getByLabelText(/Time limit/), '45')
+    backend.find(5).status = 'published' // published elsewhere
+    await actor.click(screen.getByRole('button', { name: 'Save draft details' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Your title and description edits are kept/)
+    await waitFor(() => expect(screen.getByLabelText(/Time limit/)).toBeDisabled())
+    expect(screen.getByLabelText('Title')).toHaveValue('Arabic week 1 v2')
+    expect(screen.getByLabelText(/Time limit/)).toHaveValue('30') // grading field reverted to the server value
+    await actor.click(screen.getByRole('button', { name: 'Save title and description' }))
+    expect(await screen.findByText('Title and description updated.')).toBeVisible()
+    expect(backend.callsTo('PATCH', '/quiz/quizzes/5/').at(-1).body).toEqual({ title: 'Arabic week 1 v2', description: 'Weekly assessment' })
+  })
+
+  test.each([['archived'], [undefined]])('unknown status %s is read-only with a visible contract error', async (status) => {
+    const quiz = draftQuiz()
+    if (status === undefined) delete quiz.status
+    else quiz.status = status
+    const backend = createQuizBackend({ quizzes: [quiz] })
+    open('/admin/quizzes/5', backend)
+    expect(await screen.findByText(/unrecognised quiz status/)).toBeVisible()
+    expect(screen.getByText('unknown')).toBeVisible()
+    expect(screen.getByLabelText('Title')).toBeDisabled()
+    expect(screen.getByLabelText(/Time limit/)).toBeDisabled()
+    for (const name of ['Publish quiz', 'Close quiz', 'Add question', 'Edit question 1', 'Save draft details']) {
+      expect(screen.queryByRole('button', { name })).toBeNull()
+    }
+  })
+
+  test('a non-paginated list response is a visible error, not an empty list', async () => {
+    const backend = createQuizBackend()
+    backend.state.failNext = { method: 'GET', pattern: '/quiz/quizzes/', response: () => ok([{ id: 1 }]) }
+    open('/admin/quizzes', backend)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/unexpected response/)
+    expect(screen.queryByText(/No quizzes yet/)).toBeNull()
+  })
+
+  test('a non-paginated results response is a visible error', async () => {
+    const backend = createQuizBackend({ quizzes: [published()] })
+    backend.state.failNext = { method: 'GET', pattern: '/submissions/', response: () => ok({ results: [] }) }
+    open('/admin/quizzes/7/results', backend)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/unexpected response/)
+    expect(screen.queryByText('No submissions yet.')).toBeNull()
+  })
+
+  test.each([
+    ['DELETE', '/quiz/question/11/', 409, 'Delete question 2'],
+    ['DELETE', '/quiz/question/11/', 404, 'Delete question 2'],
+  ])('%s %s -> %i reloads the real state', async (method, pattern, status, buttonName) => {
+    const backend = createQuizBackend({ quizzes: [draftQuiz()] })
+    open('/admin/quizzes/5', backend)
+    const actor = userEvent.setup()
+    await actor.click(await screen.findByRole('button', { name: buttonName }))
+    const before = backend.callsTo('GET', '/quiz/quizzes/5/').length
+    backend.state.failNext = { method, pattern, response: () => fail(status, status === 409 ? 'STATE_CONFLICT' : 'NOT_FOUND', 'Conflict with the current state.') }
+    backend.find(5).questions = backend.find(5).questions.slice(0, 1) // already gone elsewhere
+    await actor.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete question' }))
+    expect(await screen.findByRole('alert')).toBeVisible()
+    await waitFor(() => expect(backend.callsTo('GET', '/quiz/quizzes/5/').length).toBeGreaterThan(before))
+    await waitFor(() => expect(screen.getByRole('heading', { name: /Questions \(1\)/ })).toBeVisible())
+  })
+
+  test('publish 409 and question-save 409 reload the quiz', async () => {
+    const backend = createQuizBackend({ quizzes: [draftQuiz()] })
+    open('/admin/quizzes/5', backend)
+    const actor = userEvent.setup()
+    await actor.click(await screen.findByRole('button', { name: 'Publish quiz' }))
+    const before = backend.callsTo('GET', '/quiz/quizzes/5/').length
+    backend.find(5).status = 'closed'
+    backend.state.failNext = { method: 'POST', pattern: '/publish/', response: () => fail(409, 'QUIZ_NOT_PUBLISHABLE', 'This quiz cannot be published from its current state.') }
+    await actor.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Publish quiz' }))
+    expect(await screen.findByText('This quiz cannot be published from its current state.')).toBeVisible()
+    await waitFor(() => expect(backend.callsTo('GET', '/quiz/quizzes/5/').length).toBeGreaterThan(before))
+    expect(await screen.findByText('closed')).toBeVisible()
+  })
+
+  test('legacy questions are labelled, only deletable and block publishing; no "undefined"', async () => {
+    const legacy = { id: 12, type: 'mcq', text: 'Old question', points: 1, order: 3, options: [{ id: 1, text: 'x', order: 1, is_correct: true }, { id: 2, text: 'y', order: 2, is_correct: false }, { id: 3, text: 'z', order: 3, is_correct: false }, { id: 4, text: 'w', order: 4, is_correct: false }, { id: 5, text: 'v', order: 5, is_correct: false }] }
+    const backend = createQuizBackend({ quizzes: [draftQuiz({ questions: [...draftQuiz().questions, legacy] })] })
+    open('/admin/quizzes/5', backend)
+    expect(await screen.findByText(/Legacy question: it does not have exactly four options/)).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Edit question 3' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Delete question 3' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Publish quiz' })).toBeDisabled()
+    expect(screen.getByText(/Question 3 is a legacy question/)).toBeVisible()
+    expect(document.body).not.toHaveTextContent('undefined')
+  })
+
+  test('a slow older list response cannot overwrite a newer filter', async () => {
+    const backend = createQuizBackend({ quizzes: [draftQuiz(), published()] })
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    server.use(...sessionHandlers(recorder(), admin), ...backend.handlers)
+    server.use(
+      http.get(url('/quiz/quizzes/'), async ({ request }) => {
+        if (!new URL(request.url).searchParams.get('status')) {
+          await gate
+          return ok({ count: 1, next: null, previous: null, results: [{ ...draftQuiz(), question_count: 2, total_points: 5 }] })
+        }
+        return undefined // fall through to the backend handler
+      }),
+    )
+    activeBackend = backend
+    storeRefreshToken()
+    render(<TestApp path="/admin/quizzes" />)
+    const actor = userEvent.setup()
+    await actor.selectOptions(await screen.findByLabelText('Status'), 'published')
+    expect(await screen.findByRole('heading', { name: 'Published quiz' })).toBeVisible()
+    release()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(screen.getByRole('heading', { name: 'Published quiz' })).toBeVisible()
+    expect(screen.queryByRole('heading', { name: 'Arabic week 1' })).toBeNull()
+  })
+
+  test('option and correct-answer errors are programmatically associated with their fields', async () => {
+    const backend = createQuizBackend({ quizzes: [draftQuiz({ questions: [] })] })
+    open('/admin/quizzes/5', backend)
+    const actor = userEvent.setup()
+    await actor.click(await screen.findByRole('button', { name: 'Add question' }))
+    const q = within(screen.getByRole('form', { name: 'New question' }))
+    await actor.click(q.getByRole('button', { name: 'Add question' }))
+    const optionA = q.getByLabelText('Option A')
+    expect(document.getElementById(optionA.getAttribute('aria-describedby'))).toHaveTextContent('Enter the option text.')
+    const radio = q.getByLabelText('Option A is correct')
+    expect(document.getElementById(radio.getAttribute('aria-describedby'))).toHaveTextContent('Mark exactly one option')
+  })
+
+  test('confirm dialog traps Tab, closes on Escape and returns focus to the opener', async () => {
+    const backend = createQuizBackend({ quizzes: [published()] })
+    open('/admin/quizzes/7', backend)
+    const actor = userEvent.setup()
+    const opener = await screen.findByRole('button', { name: 'Close quiz' })
+    opener.focus()
+    await actor.click(opener)
+    const dialog = screen.getByRole('dialog')
+    const cancel = within(dialog).getByRole('button', { name: 'Cancel' })
+    const confirm = within(dialog).getByRole('button', { name: 'Close quiz' })
+    expect(cancel).toHaveFocus()
+    await actor.tab()
+    expect(confirm).toHaveFocus()
+    await actor.tab()
+    expect(cancel).toHaveFocus() // wraps, never leaves the dialog
+    await actor.tab({ shift: true })
+    expect(confirm).toHaveFocus()
+    await actor.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(opener).toHaveFocus()
+  })
+
+  test('a deadline with seconds round-trips untouched when only the title changes', async () => {
+    const backend = createQuizBackend({ quizzes: [draftQuiz({ deadline: '2099-10-12T20:00:30Z' })] })
+    open('/admin/quizzes/5', backend)
+    const actor = userEvent.setup()
+    await actor.type(await screen.findByLabelText('Title'), '!')
+    await actor.click(screen.getByRole('button', { name: 'Save draft details' }))
+    await screen.findByText('Draft saved.')
+    expect(backend.callsTo('PATCH', '/quiz/quizzes/5/')[0].body.deadline).toBe('2099-10-12T20:00:30Z')
+  })
+
+  test('changing the deadline sends the converted UTC value', async () => {
+    const backend = createQuizBackend({ quizzes: [draftQuiz({ deadline: '2099-10-12T20:00:30Z' })] })
+    open('/admin/quizzes/5', backend)
+    const actor = userEvent.setup()
+    const field = await screen.findByLabelText(/Deadline/)
+    await actor.clear(field)
+    await actor.type(field, '2099-11-01T08:15')
+    await actor.click(screen.getByRole('button', { name: 'Save draft details' }))
+    await screen.findByText('Draft saved.')
+    expect(backend.callsTo('PATCH', '/quiz/quizzes/5/')[0].body.deadline).toBe('2099-11-01T07:15:00Z')
   })
 })

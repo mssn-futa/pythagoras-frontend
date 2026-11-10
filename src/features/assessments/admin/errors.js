@@ -11,6 +11,9 @@ export function describeAssessmentError(error, formFields = []) {
   const { message, fields } = describeFormError(error, formFields);
   const code = error?.code;
   if (code === "QUIZ_IMMUTABLE") return { message: IMMUTABLE_MESSAGE, fields, code, immutable: true };
+  if (error?.status === 0 && code === "TIMEOUT") {
+    return { message: "The server took too long to respond. The change may have been saved; reload the page to check before trying again.", fields, code, immutable: false };
+  }
   if (error?.status === 0) {
     return { message: "We couldn't reach the server. Nothing was saved. Check your connection and try again.", fields, code, immutable: false };
   }

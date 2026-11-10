@@ -1,4 +1,5 @@
-import { api } from "../../../services/api";
+import { api, ApiError } from "../../../services/api";
+import { STATUSES } from "./quizRules.js";
 
 /*
  * Admin assessment service. Endpoint paths and bodies follow D3 "Backend
@@ -17,33 +18,42 @@ export function mapOption(raw) {
   };
 }
 
+const contractError = (what) =>
+  new ApiError({ status: 200, code: "CONTRACT_ERROR", message: `The server sent an unexpected response (${what}). Reload the page; if it persists, contact the developers.` });
+
 export function mapQuestion(raw) {
+  const type = raw.type ?? "mcq";
+  const options = (raw.options ?? []).map(mapOption).sort((a, b) => a.order - b.order || a.id - b.id);
   return {
     id: raw.id,
-    type: raw.type ?? "mcq",
+    type,
     text: raw.text ?? "",
     points: toInt(raw.points) ?? 1,
     order: toInt(raw.order) ?? 0,
-    options: (raw.options ?? []).map(mapOption).sort((a, b) => a.order - b.order || a.id - b.id),
+    options,
+    // Persisted data this release cannot edit or publish: not MCQ, or not exactly 4 options with 1 correct.
+    legacy: type !== "mcq" || options.length !== 4 || options.filter((option) => option.isCorrect).length !== 1,
   };
 }
 
 /** Quiz list item or detail. ASSUMPTION: admin detail nests `questions` with `is_correct` options. */
 export function mapQuiz(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw contractError("quiz");
   const questions = (raw.questions ?? []).map(mapQuestion).sort((a, b) => a.order - b.order || a.id - b.id);
   const summedPoints = questions.reduce((sum, question) => sum + question.points, 0);
   return {
     id: raw.id,
     title: raw.title ?? "",
     description: raw.description ?? "",
-    status: raw.status ?? "draft",
+    // Unknown or missing status never defaults to draft (fail closed): null means read-only.
+    status: STATUSES.includes(raw.status) ? raw.status : null,
     type: raw.type ?? "arabic",
     timeLimit: toInt(raw.time_limit),
     deadline: raw.deadline ?? null,
     publishedAt: raw.published_at ?? null,
     createdAt: raw.created_at ?? null,
     updatedAt: raw.updated_at ?? null,
-    relatedEvent: raw.related_event ?? null,
+    relatedEvent: Number.isInteger(raw.related_event) ? raw.related_event : null, // integer pk
     relatedCourse: raw.related_course ?? null,
     questions,
     // ASSUMPTION: list items may carry question_count/total_points; detail falls back to a local sum.
@@ -53,21 +63,13 @@ export function mapQuiz(raw) {
 }
 
 export function mapPage(raw, mapItem) {
-  return {
-    count: raw?.count ?? 0,
-    next: raw?.next ?? null,
-    previous: raw?.previous ?? null,
-    results: (raw?.results ?? []).map(mapItem),
-  };
+  if (!raw || typeof raw !== "object" || !Array.isArray(raw.results) || !Number.isInteger(raw.count)) throw contractError("expected a paginated list");
+  return { count: raw.count, next: raw.next ?? null, previous: raw.previous ?? null, results: raw.results.map(mapItem) };
 }
 
-/** Admin result row / detail. D3: student rows plus student ID/name/email. */
+/** Admin result row / detail. Contract: flat student_id, student_name, student_email, quiz_id (D3: "additionally contain student ID/name/email"). */
 export function mapResult(raw) {
-  // ASSUMPTION: student fields are flat (student_id/student_name/student_email); a nested `student` object is tolerated.
-  const nested = raw.student && typeof raw.student === "object" ? raw.student : {};
-  const first = nested.first_name ?? "";
-  const last = nested.last_name ?? "";
-  const nestedName = nested.name ?? [first, last].filter(Boolean).join(" ");
+  if (!raw || typeof raw !== "object") throw contractError("result");
   return {
     id: raw.id,
     attemptId: raw.attempt_id ?? null,
@@ -78,26 +80,27 @@ export function mapResult(raw) {
     totalPoints: toInt(raw.total_points), // null for legacy rows without a reconstructible denominator
     submittedAt: raw.submitted_at ?? null,
     gradedAt: raw.graded_at ?? null,
-    studentId: raw.student_id ?? nested.id ?? null,
-    studentName: raw.student_name ?? nestedName ?? "",
-    studentEmail: raw.student_email ?? nested.email ?? "",
+    studentId: raw.student_id ?? null,
+    studentName: raw.student_name ?? "",
+    studentEmail: raw.student_email ?? "",
   };
 }
 
 /** Request body for a draft create/edit. Dates are already UTC ISO strings. */
-export function buildQuizPayload({ title, description, timeLimit, deadline, relatedEvent = null }) {
+export function buildQuizPayload({ title, description, timeLimit, deadline, relatedEvent }) {
   return {
     title: title.trim(),
     description: description.trim(),
     time_limit: timeLimit,
     deadline,
-    related_event: relatedEvent,
+    // related_event is an integer pk. Edits omit it (no UI for it) so a PATCH never clears the association.
+    ...(relatedEvent === undefined ? {} : { related_event: relatedEvent }),
   };
 }
 
 /**
  * Question body per D3: {type:"mcq", text, points, order, options:[{text, order, is_correct}]}.
- * ASSUMPTION: when editing, existing option `id`s are sent so the server keeps persisted IDs.
+ * Option ids are never sent (lead contract decision): the D3 question body only.
  */
 export function buildQuestionPayload({ text, points, order, options, correctIndex }) {
   return {
@@ -106,7 +109,6 @@ export function buildQuestionPayload({ text, points, order, options, correctInde
     points,
     order,
     options: options.map((option, index) => ({
-      ...(option.id ? { id: option.id } : {}),
       text: option.text.trim(),
       order: index + 1,
       is_correct: index === correctIndex,

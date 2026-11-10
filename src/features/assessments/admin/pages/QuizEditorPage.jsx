@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   buildQuestionPayload,
@@ -21,7 +21,7 @@ import { Alert, ConfirmDialog, FieldError, LoadingBlock, StatusBadge } from "../
 import { blankQuestionDraft, draftFromQuestion, publishBlockers, TIME_LIMIT_MAX, TIME_LIMIT_MIN, totalPoints, validateQuizDetails } from "../quizRules.js";
 
 const DETAIL_FIELDS = ["title", "description", "time_limit", "deadline", "related_event"];
-const LETTERS = ["A", "B", "C", "D", "E", "F"];
+const letter = (index) => String.fromCharCode(65 + index);
 
 const emptyForm = { title: "", description: "", time_limit: "", deadline: "" };
 const formFromQuiz = (quiz) => ({
@@ -31,15 +31,29 @@ const formFromQuiz = (quiz) => ({
   deadline: isoToLagosInput(quiz.deadline),
 });
 
+/** Keyed by quiz id so navigating between quizzes never carries state over. */
 export default function QuizEditorPage() {
   const { id } = useParams();
+  return <QuizEditor key={id ?? "new"} id={id} />;
+}
+
+function QuizEditor({ id }) {
   const navigate = useNavigate();
+  const savedFormRef = useRef(emptyForm);
+  const formRef = useRef(emptyForm);
   const location = useLocation();
   const isNew = id === undefined;
 
   const [quiz, setQuiz] = useState(null);
   const [form, setForm] = useState(emptyForm);
-  const [savedForm, setSavedForm] = useState(emptyForm);
+  const [savedForm, setSavedFormState] = useState(emptyForm);
+  const setSavedForm = (next) => {
+    savedFormRef.current = next;
+    setSavedFormState(next);
+  };
+  useEffect(() => {
+    formRef.current = form;
+  });
   const [loading, setLoading] = useState(!isNew);
   const [loadError, setLoadError] = useState(null);
   const [notice, setNotice] = useState(location.state?.notice ?? null);
@@ -50,13 +64,17 @@ export default function QuizEditorPage() {
   const [confirm, setConfirm] = useState(null); // { kind: 'publish'|'close'|'delete'|'question', question? }
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(async () => {
+  // Refreshes the quiz and the saved baseline. Unsaved detail edits are kept unless `adopt` says
+  // otherwise; `merge(server, current)` lets a caller keep only some fields (metadata correction).
+  const load = useCallback(async ({ adopt = false, merge } = {}) => {
     try {
       const loaded = await getQuiz(id);
       setQuiz(loaded);
       const next = formFromQuiz(loaded);
-      setForm(next);
+      const wasDirty = JSON.stringify(formRef.current) !== JSON.stringify(savedFormRef.current);
       setSavedForm(next);
+      if (merge) setForm(merge(next, formRef.current));
+      else if (adopt || !wasDirty) setForm(next);
       setLoadError(null);
     } catch (error) {
       setLoadError(describeAssessmentError(error).message);
@@ -69,18 +87,23 @@ export default function QuizEditorPage() {
     if (!isNew) load();
   }, [isNew, load]);
 
-  const status = quiz?.status ?? "draft";
+  const status = isNew ? "draft" : quiz?.status ?? null;
+  const unknownStatus = !isNew && status === null; // contract violation: fail closed
   const isDraft = status === "draft";
   const dirty = JSON.stringify(form) !== JSON.stringify(savedForm);
 
-  function fail(error, formFields = DETAIL_FIELDS) {
+  function fail(error, formFields = DETAIL_FIELDS, loadOptions) {
     const described = describeAssessmentError(error, formFields);
     setProblem(described.message);
     setFieldErrors(described.fields);
     setNotice(null);
-    if (described.immutable) load(); // the quiz was published elsewhere; show its real state
+    // A state conflict or a vanished object means our view is stale: show the real state.
+    if (!isNew && (described.immutable || error?.status === 409 || error?.status === 404)) load(loadOptions);
     return described;
   }
+
+  // Untouched deadline round-trips byte for byte (keeps seconds the input cannot show).
+  const deadlineToSend = () => (form.deadline === savedForm.deadline ? quiz?.deadline ?? null : lagosInputToIso(form.deadline));
 
   async function saveDetails(event) {
     event.preventDefault();
@@ -99,6 +122,7 @@ export default function QuizEditorPage() {
             description: form.description,
             timeLimit: form.time_limit.trim() ? Number(form.time_limit) : null,
             deadline: lagosInputToIso(form.deadline),
+            relatedEvent: null, // D3 draft example; no UI for event association yet
           }),
         );
         navigate(`/admin/quizzes/${created.id}`, { replace: true, state: { notice: "Draft saved. You can now add questions." } });
@@ -110,15 +134,21 @@ export default function QuizEditorPage() {
             title: form.title,
             description: form.description,
             timeLimit: form.time_limit.trim() ? Number(form.time_limit) : null,
-            deadline: lagosInputToIso(form.deadline),
-            relatedEvent: quiz.relatedEvent,
+            deadline: deadlineToSend(),
           })
         : { title: form.title.trim(), description: form.description.trim() };
       await updateQuiz(id, payload);
-      await load();
+      await load({ adopt: true });
       setNotice(isDraft ? "Draft saved." : "Title and description updated.");
     } catch (error) {
-      fail(error);
+      const edited = form;
+      const described = fail(error, DETAIL_FIELDS, {
+        // Published meanwhile: keep the typed title/description so they can be saved as a metadata correction.
+        merge: (server) => (error?.code === "QUIZ_IMMUTABLE" ? { ...server, title: edited.title, description: edited.description } : server),
+      });
+      if (described.immutable) {
+        setProblem(`${described.message} Your title and description edits are kept below. Use "Save title and description" to apply them as a correction.`);
+      }
     } finally {
       setSaving(false);
     }
@@ -133,9 +163,10 @@ export default function QuizEditorPage() {
       else await createQuestion(quiz.id, payload);
     } catch (error) {
       const described = describeAssessmentError(error, ["text", "points", "options", "order"]);
-      if (described.immutable) {
+      if (described.immutable || error?.status === 409 || error?.status === 404) {
         setQuestionMode(null);
         fail(error);
+        return null;
       }
       return described;
     }
@@ -194,6 +225,7 @@ export default function QuizEditorPage() {
 
   const blockers = quiz ? publishBlockers(quiz) : [];
   const readOnlyGrading = !isNew && !isDraft;
+  const lockAll = unknownStatus;
   const fieldProps = (name) => ({
     "aria-invalid": Boolean(fieldErrors[name]),
     "aria-describedby": fieldErrors[name] ? `${name}-error` : undefined,
@@ -211,7 +243,7 @@ export default function QuizEditorPage() {
           <Link to="/admin/quizzes" className={secondaryButton}>
             All quizzes
           </Link>
-          {!isNew && !isDraft && (
+          {!isNew && !isDraft && !unknownStatus && (
             <Link to={`/admin/quizzes/${id}/results`} className={primaryButton}>
               View results
             </Link>
@@ -221,7 +253,12 @@ export default function QuizEditorPage() {
 
       {notice && <Alert tone="success">{notice}</Alert>}
       {problem && <Alert>{problem}</Alert>}
-      {readOnlyGrading && (
+      {unknownStatus && (
+        <Alert>
+          The server returned an unrecognised quiz status, so this quiz is shown read-only and no actions are offered. Reload the page; if it persists, contact the developers.
+        </Alert>
+      )}
+      {readOnlyGrading && !unknownStatus && (
         <Alert tone="info">
           {status === "published"
             ? "This quiz is published. Questions, options, points, correct answers, duration, deadline and links are locked. You can still correct the title and description; saved results are not affected."
@@ -239,6 +276,7 @@ export default function QuizEditorPage() {
             <input
               id="quiz-title"
               value={form.title}
+              disabled={lockAll}
               onChange={(event) => setForm({ ...form, title: event.target.value })}
               className={inputClass(fieldErrors.title)}
               {...fieldProps("title")}
@@ -253,6 +291,7 @@ export default function QuizEditorPage() {
               id="quiz-description"
               rows={3}
               value={form.description}
+              disabled={lockAll}
               onChange={(event) => setForm({ ...form, description: event.target.value })}
               className={`${inputClass(fieldErrors.description)} resize-none`}
               {...fieldProps("description")}
@@ -292,7 +331,7 @@ export default function QuizEditorPage() {
           </div>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-          <button type="submit" className={primaryButton} disabled={saving || (!isNew && !dirty)}>
+          <button type="submit" className={primaryButton} disabled={saving || lockAll || (!isNew && !dirty)}>
             {saving ? "Saving..." : isNew ? "Save draft" : isDraft ? "Save draft details" : "Save title and description"}
           </button>
         </div>
@@ -337,19 +376,26 @@ export default function QuizEditorPage() {
                       {question.points} {question.points === 1 ? "point" : "points"}
                     </span>
                   </div>
+                  {question.legacy && (
+                    <p className="mt-2 text-sm font-medium text-amber-800">
+                      Legacy question: {question.type === "mcq" ? "it does not have exactly four options with one correct answer" : `type "${question.type}" is not supported`}. It cannot be edited or published in this release.
+                    </p>
+                  )}
                   <ul className="mt-3 space-y-1 text-sm text-gray-700">
                     {question.options.map((option, optionIndex) => (
                       <li key={option.id} className={option.isCorrect ? "font-semibold text-[#2A742F]" : ""}>
-                        {LETTERS[optionIndex]}. {option.text}
+                        {letter(optionIndex)}. {option.text}
                         {option.isCorrect && <span className="ml-2 text-xs">(correct)</span>}
                       </li>
                     ))}
                   </ul>
                   {isDraft && !questionMode && (
                     <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-                      <button type="button" className={secondaryButton} onClick={() => setQuestionMode({ question })}>
-                        Edit question {index + 1}
-                      </button>
+                      {!question.legacy && (
+                        <button type="button" className={secondaryButton} onClick={() => setQuestionMode({ question })}>
+                          Edit question {index + 1}
+                        </button>
+                      )}
                       <button type="button" className={secondaryButton} onClick={() => setConfirm({ kind: "question", question })}>
                         Delete question {index + 1}
                       </button>
@@ -372,7 +418,7 @@ export default function QuizEditorPage() {
         </section>
       )}
 
-      {!isNew && (
+      {!isNew && !unknownStatus && (
         <section aria-label="Lifecycle" className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
           <h2 className="text-xl font-semibold text-gray-800">Publication</h2>
           {isDraft && (
