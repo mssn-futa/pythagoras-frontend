@@ -200,21 +200,32 @@ describe('event publication and deletion', () => {
 })
 
 describe('content list and resource page', () => {
-  test('content page lists an event\'s resources with type/status filters and empty state', async () => {
+  test('content page filters by type and status on the server and handles empty results', async () => {
+    const seen = []
     renderAdminApp('/admin/content?event=3', [
       http.get(url('/dawah/events/'), () => ok(paged([rawEvent()]))),
-      http.get(url('/dawah/events/3/resources/'), () => ok(paged([
-        rawResource({ id: 8, title: 'Patience', status: 'published', storage_status: 'ready' }),
-        rawResource({ id: 9, title: 'Slides', type: 'doc', storage_status: 'ready' }),
-      ]))),
+      http.get(url('/dawah/events/3/resources/'), ({ request }) => {
+        const params = Object.fromEntries(new URL(request.url).searchParams)
+        seen.push(params)
+        const all = [
+          rawResource({ id: 8, title: 'Patience', status: 'published', storage_status: 'ready' }),
+          rawResource({ id: 9, title: 'Slides', type: 'doc', storage_status: 'ready' }),
+        ]
+        const results = all.filter((item) => (!params.type || item.type === params.type) && (!params.status || item.status === params.status))
+        return ok(paged(results))
+      }),
     ])
     expect(await screen.findByRole('link', { name: 'Patience' })).toHaveAttribute('href', '/admin/events/3/resources/8')
     expect(screen.getByRole('link', { name: 'Slides' })).toBeInTheDocument()
+    expect(seen[0]).toEqual({ page: '1', page_size: '100' })
     const user = userEvent.setup()
     await user.selectOptions(screen.getByLabelText('Type'), 'doc')
+    expect(await screen.findByRole('link', { name: 'Slides' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Patience' })).not.toBeInTheDocument()
+    expect(seen.at(-1)).toMatchObject({ type: 'doc' })
     await user.selectOptions(screen.getByLabelText('Status'), 'published')
     expect(await screen.findByText('No resources match these filters.')).toBeInTheDocument()
+    expect(seen.at(-1)).toMatchObject({ type: 'doc', status: 'published' })
   })
 
   test('creating a resource saves a draft once then opens its upload page', async () => {
@@ -247,9 +258,9 @@ describe('content list and resource page', () => {
           calls.push('publish')
           if (publishError) return publishError
           state.status = 'published'
-          return ok({})
+          return ok(rawResource({ status: 'published', storage_status: state.storage }))
         }),
-        http.post(url('/dawah/events/3/resources/8/unpublish/'), () => { calls.push('unpublish'); state.status = 'unpublished'; return ok({}) }),
+        http.post(url('/dawah/events/3/resources/8/unpublish/'), () => { calls.push('unpublish'); state.status = 'unpublished'; return ok(rawResource({ status: 'unpublished', storage_status: state.storage })) }),
         http.delete(url('/dawah/events/3/resources/8/'), () => { calls.push('delete'); return new Response(null, { status: 204 }) }),
         http.get(url('/dawah/events/3/resources/'), () => ok(paged([]))),
         http.get(url('/dawah/events/'), () => ok(paged([]))),
@@ -280,5 +291,73 @@ describe('content list and resource page', () => {
     await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete resource' }))
     expect(await screen.findByRole('heading', { name: 'Friday khutbah' })).toBeInTheDocument()
     expect(res.calls).toEqual(['publish', 'unpublish', 'delete'])
+  })
+})
+
+describe('DAWAH-01 conflict codes', () => {
+  const eventHandlers = (extra) => [
+    http.get(url('/dawah/events/3/'), () => ok(rawEvent())),
+    http.get(url('/dawah/events/3/resources/'), () => ok(paged([]))),
+    ...extra,
+  ]
+
+  test('EVENT_NOT_PUBLISHABLE lists the offending fields', async () => {
+    renderAdminApp('/admin/events/3', eventHandlers([
+      http.post(url('/dawah/events/3/publish/'), () => fail(409, 'EVENT_NOT_PUBLISHABLE', 'Event is not publishable.', { summary: ['This field is required to publish.'] })),
+    ]))
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Publish event' }))
+    expect(await screen.findByText(/cannot be published yet.*summary: This field is required to publish\./)).toBeInTheDocument()
+  })
+
+  test('INVALID_STATE_TRANSITION explains and reloads the current state', async () => {
+    let status = 'draft'
+    let reads = 0
+    renderAdminApp('/admin/events/3', [
+      http.get(url('/dawah/events/3/'), () => { reads += 1; return ok(rawEvent({ status })) }),
+      http.get(url('/dawah/events/3/resources/'), () => ok(paged([]))),
+      http.post(url('/dawah/events/3/publish/'), () => { status = 'published'; return fail(409, 'INVALID_STATE_TRANSITION', 'Already published.') }),
+    ])
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Publish event' }))
+    expect(await screen.findByText(/not available in the current state/)).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Unpublish event' })).toBeInTheDocument()
+    expect(reads).toBeGreaterThanOrEqual(2)
+  })
+
+  test('UNPUBLISH_REQUIRED on deleting an event with a published resource', async () => {
+    renderAdminApp('/admin/events/3', eventHandlers([
+      http.delete(url('/dawah/events/3/'), () => fail(409, 'UNPUBLISH_REQUIRED', 'Unpublish first.')),
+    ]))
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Delete event' }))
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete event' }))
+    expect(await screen.findByText(/Unpublish this item .* before deleting it/)).toBeInTheDocument()
+  })
+
+  test('RESOURCE_REFERENCED names the referencing quiz', async () => {
+    renderAdminApp('/admin/events/3', eventHandlers([
+      http.delete(url('/dawah/events/3/'), () => fail(409, 'RESOURCE_REFERENCED', 'Referenced.', { references: { 'quiz.quiz': [3] } })),
+    ]))
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Delete event' }))
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete event' }))
+    expect(await screen.findByText(/referenced by a quiz.*#3/)).toBeInTheDocument()
+  })
+
+  test('EVENT_NOT_PUBLISHED when publishing a resource of an unpublished event', async () => {
+    renderAdminApp('/admin/events/3/resources/8', [
+      http.get(url('/dawah/events/3/'), () => ok(rawEvent({ status: 'unpublished' }))),
+      http.get(url('/dawah/events/3/resources/8/'), () => ok(rawResource({ storage_status: 'ready' }))),
+      http.post(url('/dawah/events/3/resources/8/publish/'), () => fail(409, 'EVENT_NOT_PUBLISHED', 'Parent not published.')),
+    ])
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Publish resource' }))
+    expect(await screen.findByText(/Publish the event first\. A resource can only/)).toBeInTheDocument()
+  })
+
+  test('an out-of-range events page (404) offers a way back to page 1', async () => {
+    renderAdminApp('/admin/events?page=9', [
+      http.get(url('/dawah/events/'), ({ request }) => (new URL(request.url).searchParams.get('page') === '1' ? ok(paged([rawEvent()])) : fail(404, 'NOT_FOUND', 'Invalid page.'))),
+    ])
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Go to the first page' }))
+    expect(await screen.findByRole('link', { name: 'Friday khutbah' })).toBeInTheDocument()
   })
 })

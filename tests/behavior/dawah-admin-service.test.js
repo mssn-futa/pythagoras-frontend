@@ -1,7 +1,7 @@
 import { http } from 'msw'
 import { beforeEach, describe, expect, test } from 'vitest'
 import {
-  createAudioResource, createEvent, finalizeUpload, listEvents, mapEvent, mapPage, mapResource,
+  createAudioResource, createEvent, finalizeUpload, listEvents, listResources, mapEvent, mapPage, mapResource,
   requestAudioUpload, toEventFormValues, toEventPayload, updateEvent,
 } from '../../src/features/dawah/admin/dawahAdminService.js'
 import { formatLagos, lagosLocalToUtcIso, utcIsoToLagosLocal } from '../../src/features/dawah/admin/time.js'
@@ -81,6 +81,15 @@ describe('service calls', () => {
     expect(seen.search).toBe('?status=draft&page=2&page_size=20&upcoming=true')
     expect(seen.auth).toBe('Bearer access-1')
     expect(page.results[0].title).toBe('Friday khutbah')
+  })
+
+  test('listResources sends type/status filters only when set', async () => {
+    const seen = []
+    server.use(http.get(url('/dawah/events/3/resources/'), ({ request }) => { seen.push(new URL(request.url).search); return ok(paged([rawResource()])) }))
+    await listResources(3)
+    await listResources(3, { type: 'aud', status: 'draft' })
+    await listResources(3, { type: 'all', status: 'all' })
+    expect(seen).toEqual(['?page=1&page_size=100', '?page=1&page_size=100&type=aud&status=draft', '?page=1&page_size=100'])
   })
 
   test('createEvent posts the payload; updateEvent patches', async () => {

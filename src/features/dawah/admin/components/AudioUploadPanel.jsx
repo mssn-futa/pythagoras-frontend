@@ -39,8 +39,8 @@ export default function AudioUploadPanel({ eventId, resource, onResourceChange }
   if (published) {
     return (
       <Card aria-label="Audio file">
-        <h2 className="text-lg font-semibold text-gray-800">Audio file</h2>
-        <p className="mt-2 text-sm text-gray-600">Published audio cannot be replaced. Unpublish this resource first to upload different audio.</p>
+        <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Audio file</h2>
+        <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Published audio cannot be replaced. Unpublish this resource first to upload different audio.</p>
       </Card>
     );
   }
@@ -48,15 +48,15 @@ export default function AudioUploadPanel({ eventId, resource, onResourceChange }
   const percent = Math.round(upload.progress * 100);
   return (
     <Card aria-label="Audio file">
-      <h2 className="text-lg font-semibold text-gray-800">Audio file</h2>
-      <p className="mt-1 text-sm text-gray-600">
+      <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Audio file</h2>
+      <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
         {resource.storageStatus === "ready" ? "Audio is ready. Upload again to replace it." : "Upload an MP3 to make this draft publishable."}
       </p>
       <div className="mt-4 space-y-4">
         {(upload.phase === "idle" || upload.phase === "failed" || upload.phase === "ready" || upload.phase === "pending") && (
           <div>
-            <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 mb-1">
-              MP3 file <span className="font-normal text-xs text-gray-500">(up to {formatBytes(AUDIO_LIMIT_BYTES)})</span>
+            <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              MP3 file <span className="font-normal text-xs text-gray-500 dark:text-gray-400">(up to {formatBytes(AUDIO_LIMIT_BYTES)})</span>
             </label>
             <input
               id={inputId}
@@ -74,9 +74,9 @@ export default function AudioUploadPanel({ eventId, resource, onResourceChange }
         )}
 
         {upload.phase !== "idle" && upload.fileName && (
-          <p className="text-sm text-gray-700 break-all">
+          <p className="text-sm text-gray-700 dark:text-gray-300 break-all">
             {upload.fileName}
-            {upload.fileSize != null && <span className="text-gray-500"> · {formatBytes(upload.fileSize)}</span>}
+            {upload.fileSize != null && <span className="text-gray-500 dark:text-gray-400"> · {formatBytes(upload.fileSize)}</span>}
           </p>
         )}
 
@@ -84,8 +84,8 @@ export default function AudioUploadPanel({ eventId, resource, onResourceChange }
           <ol className="space-y-3 text-sm" aria-label="Upload steps">
             <li>
               <div className="flex justify-between gap-2">
-                <span className="font-medium text-gray-800">1. Upload to storage</span>
-                <span className="text-gray-600">{uploadStepText(upload.phase, upload.progress)}</span>
+                <span className="font-medium text-gray-800 dark:text-white">1. Upload to storage</span>
+                <span className="text-gray-600 dark:text-gray-400">{uploadStepText(upload.phase, upload.progress)}</span>
               </div>
               <div
                 role="progressbar"
@@ -93,14 +93,14 @@ export default function AudioUploadPanel({ eventId, resource, onResourceChange }
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={percent}
-                className="mt-1 h-2 rounded-full bg-gray-200 overflow-hidden"
+                className="mt-1 h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden"
               >
                 <div className="h-full bg-[#2A742F] transition-all" style={{ width: `${percent}%` }} />
               </div>
             </li>
             <li className="flex justify-between gap-2">
-              <span className="font-medium text-gray-800">2. Server validation</span>
-              <span className="text-gray-600">{validationStepText(upload.phase)}</span>
+              <span className="font-medium text-gray-800 dark:text-white">2. Server validation</span>
+              <span className="text-gray-600 dark:text-gray-400">{validationStepText(upload.phase)}</span>
             </li>
           </ol>
         )}

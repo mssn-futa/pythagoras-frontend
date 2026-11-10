@@ -137,8 +137,12 @@ export const unpublishEvent = (id) => api.post(`${eventUrl(id)}unpublish/`);
 
 // ---- resources -----------------------------------------------------------
 
-export async function listResources(eventId, { page = 1, pageSize = LIST_PAGE_SIZE_MAX } = {}) {
-  return mapPage(await api.get(resourcesUrl(eventId), { params: { page, page_size: pageSize } }), mapResource);
+/** Server-side filters: `type` (aud|vid|doc) and, for admins, `status`. Omitted when "all". */
+export async function listResources(eventId, { page = 1, pageSize = LIST_PAGE_SIZE_MAX, type, status } = {}) {
+  const params = { page, page_size: pageSize };
+  if (type && type !== "all") params.type = type;
+  if (status && status !== "all") params.status = status;
+  return mapPage(await api.get(resourcesUrl(eventId), { params }), mapResource);
 }
 
 export async function getResource(eventId, id) {

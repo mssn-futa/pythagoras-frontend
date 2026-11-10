@@ -74,6 +74,7 @@ function ResourceDetail({ eventId, resourceId }) {
       else resourceState.reload();
     } catch (error) {
       setActionError(adminErrorMessage(error));
+      if (error.code === "INVALID_STATE_TRANSITION") resourceState.reload();
     } finally {
       setBusy(false);
     }
@@ -108,7 +109,7 @@ function ResourceDetail({ eventId, resourceId }) {
       <Alert>{actionError}</Alert>
 
       <Card aria-label="Resource details">
-        <h2 className="text-lg font-semibold text-gray-800 mb-3">Details</h2>
+        <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-3">Details</h2>
         <TitleForm key={resource.id} resource={resource} eventId={eventId} />
       </Card>
 
@@ -116,17 +117,17 @@ function ResourceDetail({ eventId, resourceId }) {
         <AudioUploadPanel eventId={eventId} resource={resource} onResourceChange={resourceState.reload} />
       ) : (
         <Card>
-          <p className="text-sm text-gray-600">This {RESOURCE_TYPES[resource.type] ?? "resource"} is managed in a later release. Only its state can be changed here.</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">This {RESOURCE_TYPES[resource.type] ?? "resource"} is managed in a later release. Only its state can be changed here.</p>
         </Card>
       )}
 
       {isAudio && resource.storageStatus === "ready" && previewSrc && (
         <Card aria-label="Audio preview">
-          <h2 className="text-lg font-semibold text-gray-800">Preview</h2>
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Preview</h2>
           <audio controls preload="metadata" src={previewSrc} className="mt-3 w-full">
             Your browser does not support audio playback.
           </audio>
-          <p className="mt-2 text-xs text-gray-600">
+          <p className="mt-2 text-xs text-gray-600 dark:text-gray-400">
             {resource.contentType ?? "audio/mpeg"}
             {resource.sizeBytes ? ` · ${formatBytes(resource.sizeBytes)}` : ""}
             {resource.uploadedAt ? ` · uploaded ${formatLagos(resource.uploadedAt)}` : ""}
@@ -135,14 +136,14 @@ function ResourceDetail({ eventId, resourceId }) {
       )}
 
       <Card aria-label="Publication">
-        <h2 className="text-lg font-semibold text-gray-800">Publication</h2>
-        <p className="mt-1 text-sm text-gray-600">
+        <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Publication</h2>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
           {published
             ? "Visible to readers while its event is published. Unpublish to hide it, replace its audio or delete it."
             : "Publishing needs ready audio and a published event. The server checks both."}
         </p>
         {event && event.status !== "published" && !published && (
-          <p className="mt-2 text-sm text-amber-800">The event is {event.status}. Publish the event before publishing this resource.</p>
+          <p className="mt-2 text-sm text-amber-800 dark:text-amber-300">The event is {event.status}. Publish the event before publishing this resource.</p>
         )}
         <div className="mt-3 flex flex-wrap gap-2">
           {published ? (
@@ -159,7 +160,7 @@ function ResourceDetail({ eventId, resourceId }) {
             </button>
           )}
           {published ? (
-            <p className="text-xs text-gray-600 self-center">Published resources must be unpublished before deletion.</p>
+            <p className="text-xs text-gray-600 dark:text-gray-400 self-center">Published resources must be unpublished before deletion.</p>
           ) : (
             <ConfirmAction
               label="Delete resource"

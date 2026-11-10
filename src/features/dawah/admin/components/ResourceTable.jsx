@@ -6,7 +6,7 @@ import { Badge, StatusBadge } from "./ui.jsx";
 /** Responsive list of resources (cards, so it reads the same on phones). */
 export default function ResourceTable({ resources, eventTitles = {} }) {
   return (
-    <ul className="divide-y divide-gray-200" aria-label="Resources">
+    <ul className="divide-y divide-gray-200 dark:divide-gray-700" aria-label="Resources">
       {resources.map((resource) => (
         <li key={resource.id} className="py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div className="min-w-0">
@@ -16,7 +16,7 @@ export default function ResourceTable({ resources, eventTitles = {} }) {
             >
               {resource.title || "Untitled resource"}
             </Link>
-            <p className="text-xs text-gray-600 mt-0.5">
+            <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
               {RESOURCE_TYPES[resource.type] ?? resource.type}
               {" · "}
               {formatDuration(resource.duration)}

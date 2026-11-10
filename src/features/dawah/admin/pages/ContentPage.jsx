@@ -1,7 +1,7 @@
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import ResourceTable from "../components/ResourceTable.jsx";
-import { Card, EmptyState, ErrorState, Loading, PageHeader, Pager, SelectInput, primaryButton } from "../components/ui.jsx";
+import { Card, EmptyState, ErrorState, Loading, PageHeader, Pager, SelectInput, primaryButton, secondaryButton } from "../components/ui.jsx";
 import { LIST_PAGE_SIZE_MAX, RESOURCE_TYPES, STATUS_FILTERS } from "../constants.js";
 import { listAllEventsForPicker, listResources } from "../dawahAdminService.js";
 import { useLoad } from "../hooks.js";
@@ -9,25 +9,27 @@ import { useLoad } from "../hooks.js";
 const TYPE_FILTERS = [{ value: "all", label: "All types" }, ...Object.entries(RESOURCE_TYPES).map(([value, label]) => ({ value, label }))];
 
 function ResourcesOfEvent({ eventId, eventTitle, type, status, page, onPage }) {
-  const loader = useCallback(() => listResources(eventId, { page, pageSize: LIST_PAGE_SIZE_MAX }), [eventId, page]);
+  const loader = useCallback(() => listResources(eventId, { page, pageSize: LIST_PAGE_SIZE_MAX, type, status }), [eventId, page, type, status]);
   const { data, error, loading, reload } = useLoad(loader);
-  // type/status filters apply to the loaded page (no list filter params are assumed).
-  const visible = useMemo(
-    () => (data?.results ?? []).filter((item) => (type === "all" || item.type === type) && (status === "all" || item.status === status)),
-    [data, type, status],
-  );
   if (loading && !data) return <Loading label="Loading content…" />;
+  if (error?.status === 404 && page > 1) {
+    return (
+      <EmptyState title="That page no longer exists">
+        <button type="button" className={secondaryButton} onClick={() => onPage(1)}>Go to the first page</button>
+      </EmptyState>
+    );
+  }
   if (error) return <ErrorState error={error} onRetry={reload} title="Could not load content" />;
-  if (visible.length === 0) {
+  if (data.results.length === 0) {
     return (
       <EmptyState title="No content found">
-        {data.results.length ? "No resources match these filters." : `Add audio to “${eventTitle}” to get started.`}
+        {type !== "all" || status !== "all" ? "No resources match these filters." : `Add audio to “${eventTitle}” to get started.`}
       </EmptyState>
     );
   }
   return (
     <>
-      <ResourceTable resources={visible} />
+      <ResourceTable resources={data.results} />
       <Pager page={page} count={data.count} pageSize={LIST_PAGE_SIZE_MAX} hasNext={Boolean(data.next)} hasPrevious={Boolean(data.previous)} onPage={onPage} />
     </>
   );

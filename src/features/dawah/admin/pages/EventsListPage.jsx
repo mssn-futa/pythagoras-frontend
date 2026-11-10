@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Card, EmptyState, ErrorState, Loading, PageHeader, Pager, SelectInput, StatusBadge, primaryButton } from "../components/ui.jsx";
+import { Card, EmptyState, ErrorState, Loading, PageHeader, Pager, SelectInput, StatusBadge, primaryButton, secondaryButton } from "../components/ui.jsx";
 import { PAGE_SIZE, STATUS_FILTERS } from "../constants.js";
 import { listEvents } from "../dawahAdminService.js";
 import { useLoad } from "../hooks.js";
@@ -41,7 +41,7 @@ export default function EventsListPage() {
             value={status}
             onChange={(event) => update({ status: event.target.value })}
           />
-          <label className="flex items-center gap-2 text-sm text-gray-700 pb-2">
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 pb-2">
             <input type="checkbox" checked={upcoming} onChange={(event) => update({ upcoming: event.target.checked })} />
             Upcoming only
           </label>
@@ -51,6 +51,10 @@ export default function EventsListPage() {
       <Card>
         {loading && !data ? (
           <Loading label="Loading events…" />
+        ) : error?.status === 404 && page > 1 ? (
+          <EmptyState title="That page no longer exists">
+            <button type="button" className={secondaryButton} onClick={() => update({ page: 1 })}>Go to the first page</button>
+          </EmptyState>
         ) : error ? (
           <ErrorState error={error} onRetry={reload} title="Could not load events" />
         ) : data.results.length === 0 ? (
@@ -59,14 +63,14 @@ export default function EventsListPage() {
           </EmptyState>
         ) : (
           <>
-            <ul className="divide-y divide-gray-200" aria-label="Events">
+            <ul className="divide-y divide-gray-200 dark:divide-gray-700" aria-label="Events">
               {data.results.map((event) => (
                 <li key={event.id} className="py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <div className="min-w-0">
                     <Link to={`/admin/events/${event.id}`} className="font-medium text-[#2A742F] hover:underline break-words">
                       {event.title}
                     </Link>
-                    <p className="text-xs text-gray-600 mt-0.5">
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
                       {formatLagos(event.startTime)}
                       {event.speakers ? ` · ${event.speakers}` : ""}
                       {event.location ? ` · ${event.location}` : ""}

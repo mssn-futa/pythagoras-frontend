@@ -37,6 +37,10 @@ function EventDetail({ eventId }) {
       }
     } catch (error) {
       setActionError(adminErrorMessage(error));
+      if (error.code === "INVALID_STATE_TRANSITION") {
+        eventState.reload();
+        resourcesState.reload();
+      }
     } finally {
       setBusy(false);
     }
@@ -57,8 +61,8 @@ function EventDetail({ eventId }) {
       <Alert>{actionError}</Alert>
 
       <Card aria-label="Publication">
-        <h2 className="text-lg font-semibold text-gray-800">Publication</h2>
-        <p className="mt-1 text-sm text-gray-600">
+        <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Publication</h2>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
           {published
             ? `Published${event.publishedAt ? ` ${formatLagos(event.publishedAt)}` : ""}. Unpublishing hides the event and all its resources from discovery without changing their own states. Links already shared may still work.`
             : "Publishing needs valid metadata and timing. Audio is published separately once it is ready."}
@@ -78,7 +82,7 @@ function EventDetail({ eventId }) {
             </button>
           )}
           {published ? (
-            <p className="text-xs text-gray-600 self-center">Published events must be unpublished before deletion.</p>
+            <p className="text-xs text-gray-600 dark:text-gray-400 self-center">Published events must be unpublished before deletion.</p>
           ) : (
             <ConfirmAction
               label="Delete event"
@@ -93,13 +97,13 @@ function EventDetail({ eventId }) {
       </Card>
 
       <Card aria-label="Event details">
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">Details</h2>
+        <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">Details</h2>
         <EventForm event={event} submitLabel="Save changes" onSubmit={(values) => updateEvent(eventId, values)} onSaved={eventState.reload} />
       </Card>
 
       <Card aria-label="Event resources">
         <div className="flex items-center justify-between gap-2 mb-2">
-          <h2 className="text-lg font-semibold text-gray-800">Resources</h2>
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Resources</h2>
           <Link to={`/admin/events/${eventId}/resources/new`} className={secondaryButton}>Add audio</Link>
         </div>
         {resourcesState.loading && !resourcesState.data ? (

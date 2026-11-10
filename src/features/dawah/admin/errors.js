@@ -1,22 +1,65 @@
 import { describeFormError } from "../../auth/formErrors.js";
 
-/** Friendly copy for the D2/D0 domain state codes; falls back to the server message. */
+const FIELD_LABELS = {
+  title: "title",
+  category: "category",
+  speakers: "speakers",
+  location: "location",
+  start_time: "start time",
+  end_time: "end time",
+  summary: "summary",
+  description: "description",
+};
+
+function fieldSummary(fields = {}) {
+  return Object.entries(fields)
+    .filter(([, messages]) => Array.isArray(messages))
+    .map(([name, messages]) => `${FIELD_LABELS[name] ?? name}: ${messages.join(" ")}`)
+    .join(" ");
+}
+
+/**
+ * DAWAH-01 sends `fields.references = {"quiz.quiz": [3]}`, but the shared client
+ * flattens nested field values to ["3"], dropping the model name. Handle both
+ * shapes so the copy stays useful if the client later keeps the structure.
+ */
+function referenceSummary(fields = {}) {
+  const references = fields.references;
+  if (Array.isArray(references)) return references.length ? `reference IDs: ${references.map((id) => `#${id}`).join(", ")}` : "";
+  if (!references || typeof references !== "object") return "";
+  return Object.entries(references)
+    .map(([model, ids]) => `${model} ${[].concat(ids).map((id) => `#${id}`).join(", ")}`)
+    .join("; ");
+}
+
+/** Friendly copy for the DAWAH-01 / D0 domain state codes; null falls back to the server message. */
 const CODE_MESSAGES = {
-  RESOURCE_REFERENCED: "This item is referenced by a quiz, so it cannot be deleted. Remove the quiz reference first.",
-  MEDIA_NOT_READY: "The audio is not ready yet. Upload it and wait for server validation before publishing.",
-  MEDIA_UPLOAD_FAILED: "The storage provider is unavailable right now. Nothing was published; try again shortly.",
+  INVALID_STATE_TRANSITION: () => "That action is not available in the current state. The page has been refreshed; check the status and try again.",
+  EVENT_NOT_PUBLISHABLE: (error) => {
+    const details = fieldSummary(error.fields);
+    return `This event cannot be published yet. Fix its details first.${details ? ` ${details}` : ""}`;
+  },
+  EVENT_NOT_PUBLISHED: () => "Publish the event first. A resource can only be published while its event is published.",
+  MEDIA_NOT_READY: () => "The audio is not ready yet. Upload it and wait for server validation before publishing.",
+  UNPUBLISH_REQUIRED: () => "Unpublish this item (and any published resources under it) before deleting it.",
+  RESOURCE_REFERENCED: (error) => {
+    const refs = referenceSummary(error.fields);
+    return `This item is referenced by a quiz, so it cannot be deleted${refs ? ` (${refs})` : ""}. Remove the quiz reference first.`;
+  },
+  MEDIA_UPLOAD_FAILED: () => "The storage provider is unavailable right now. Nothing was published; try again shortly.",
 };
 
 export function adminErrorMessage(error) {
   if (!error) return null;
-  return CODE_MESSAGES[error.code] ?? error.message;
+  const build = CODE_MESSAGES[error.code];
+  return build ? build(error) : error.message;
 }
 
 /** Alert text and per-field errors for a form; domain codes get friendly copy. */
 export function describeAdminError(error, formFields = []) {
   if (!error) return { message: null, fields: {} };
-  const described = describeFormError(error, formFields);
-  return CODE_MESSAGES[error.code] ? { ...described, message: CODE_MESSAGES[error.code] } : described;
+  if (CODE_MESSAGES[error.code]) return { message: adminErrorMessage(error), fields: {} };
+  return describeFormError(error, formFields);
 }
 
 /** Client-side checks that mirror D2 (end strictly after start). */
