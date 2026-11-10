@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import AudioUploadPanel from "../components/AudioUploadPanel.jsx";
+import DocumentUploadPanel from "../components/DocumentUploadPanel.jsx";
 import VideoLinkPanel from "../components/VideoLinkPanel.jsx";
 import {
   Alert, Badge, Breadcrumbs, Card, ConfirmAction, ErrorState, Field, Loading, PageHeader, StatusBadge, primaryButton,
@@ -9,7 +10,9 @@ import { RESOURCE_TYPES, STORAGE_STATUS_LABELS } from "../constants.js";
 import { deleteResource, getEvent, getResource, publishResource, unpublishResource, updateResource } from "../dawahAdminService.js";
 import { adminErrorMessage, describeAdminError } from "../errors.js";
 import { useLoad } from "../hooks.js";
+import { safeHttpsUrl } from "../safeUrl.js";
 import { useAudioUpload } from "../useAudioUpload.js";
+import { useDocumentUpload } from "../useDocumentUpload.js";
 import { formatBytes, formatDuration, formatLagos } from "../time.js";
 
 function TitleForm({ resource, eventId }) {
@@ -62,8 +65,10 @@ function ResourceDetail({ eventId, resourceId }) {
 
   const resource = resourceState.data;
   // Owned here (not in the panel) so state actions can be blocked while an upload runs.
-  const upload = useAudioUpload({ eventId, resourceId, resource, onResourceChange: resourceState.reload });
-  const uploading = upload.busy;
+  // Both hooks are always called (rules of hooks); only the one matching the resource type is ever started.
+  const audioUpload = useAudioUpload({ eventId, resourceId, resource, onResourceChange: resourceState.reload });
+  const documentUpload = useDocumentUpload({ eventId, resourceId, resource, onResourceChange: resourceState.reload });
+  const uploading = audioUpload.busy || documentUpload.busy;
   if (resourceState.loading && !resource) return <Loading label="Loading resource…" />;
   if (resourceState.error) return <ErrorState error={resourceState.error} onRetry={resourceState.reload} title="Could not load this resource" />;
 
@@ -88,7 +93,10 @@ function ResourceDetail({ eventId, resourceId }) {
   const published = resource.status === "published";
   const isAudio = resource.type === "aud";
   const isVideo = resource.type === "vid";
+  const isDocument = resource.type === "doc";
   const previewSrc = resource.previewUrl ?? resource.mediaUrl;
+  // Admin-only short-lived preview (or the public URL once promoted); https only, never persisted.
+  const documentHref = safeHttpsUrl(documentUpload.previewUrl ?? resource.previewUrl ?? resource.mediaUrl);
 
   return (
     <section className="max-w-3xl mx-auto space-y-6">
@@ -120,12 +128,31 @@ function ResourceDetail({ eventId, resourceId }) {
       </Card>
 
       {isAudio ? (
-        <AudioUploadPanel resource={resource} upload={upload} />
+        <AudioUploadPanel resource={resource} upload={audioUpload} />
+      ) : isDocument ? (
+        <DocumentUploadPanel resource={resource} upload={documentUpload} />
       ) : isVideo ? (
         <VideoLinkPanel key={resource.id} eventId={eventId} resource={resource} onSaved={resourceState.reload} />
       ) : (
         <Card>
           <p className="text-sm text-gray-600 dark:text-gray-400">This {RESOURCE_TYPES[resource.type] ?? "resource"} is managed in a later release. Only its state can be changed here.</p>
+        </Card>
+      )}
+
+      {isDocument && resource.storageStatus === "ready" && documentHref && (
+        <Card aria-label="Document preview">
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Preview</h2>
+          <p className="mt-2 break-all text-sm text-gray-700 dark:text-gray-300">
+            {resource.fileName ?? "Document"}
+            {resource.sizeBytes ? <span className="text-gray-500 dark:text-gray-400"> · {formatBytes(resource.sizeBytes)}</span> : null}
+          </p>
+          <a href={documentHref} target="_blank" rel="noopener noreferrer" className="mt-3 inline-block text-sm font-medium text-[#2A742F] underline dark:text-green-400">
+            Open document (opens in a new tab)
+          </a>
+          <p className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+            The document is never displayed inside this page.
+            {resource.uploadedAt ? ` Uploaded ${formatLagos(resource.uploadedAt)}.` : ""}
+          </p>
         </Card>
       )}
 
@@ -147,10 +174,10 @@ function ResourceDetail({ eventId, resourceId }) {
         <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Publication</h2>
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
           {published
-            ? `Visible to readers while its event is published. Unpublish to hide it, replace its ${isVideo ? "link" : "audio"} or delete it.`
+            ? `Visible to readers while its event is published. Unpublish to hide it, replace its ${isVideo ? "link" : isDocument ? "document" : "audio"} or delete it.`
             : isVideo
               ? "Publishing needs a saved YouTube link and a published event. The server checks both. This does not publish anything on YouTube."
-              : "Publishing needs ready audio and a published event. The server checks both."}
+              : `Publishing needs a ready ${isDocument ? "document" : "audio file"} and a published event. The server checks both.`}
         </p>
         {event && event.status !== "published" && !published && (
           <p className="mt-2 text-sm text-amber-800 dark:text-amber-300">The event is {event.status}. Publish the event before publishing this resource.</p>
@@ -177,7 +204,7 @@ function ResourceDetail({ eventId, resourceId }) {
             <ConfirmAction
               label="Delete resource"
               confirmLabel="Delete resource"
-              prompt={isVideo ? "Delete this video resource? The video on YouTube is not affected." : "Delete this resource and its uploaded audio?"}
+              prompt={isVideo ? "Delete this video resource? The video on YouTube is not affected." : isDocument ? "Delete this resource and its uploaded document?" : "Delete this resource and its uploaded audio?"}
               tone="danger"
               busy={busy}
               disabled={uploading}

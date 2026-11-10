@@ -1,11 +1,13 @@
 import { useCallback, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import FeaturedImagePanel from "../components/FeaturedImagePanel.jsx";
 import EventForm from "../components/EventForm.jsx";
 import ResourceTable from "../components/ResourceTable.jsx";
 import { Alert, Breadcrumbs, Card, ConfirmAction, EmptyState, ErrorState, Loading, PageHeader, StatusBadge, primaryButton, secondaryButton } from "../components/ui.jsx";
 import { deleteEvent, getEvent, listAllResources, publishEvent, unpublishEvent, updateEvent } from "../dawahAdminService.js";
 import { adminErrorMessage } from "../errors.js";
 import { useLoad } from "../hooks.js";
+import { useImageUpload } from "../useImageUpload.js";
 import { formatLagos } from "../time.js";
 
 function EventDetail({ eventId }) {
@@ -20,6 +22,8 @@ function EventDetail({ eventId }) {
   const [notice, setNotice] = useState(location.state?.notice ?? null);
 
   const event = eventState.data;
+  // Called before any early return so hook order is stable.
+  const imageUpload = useImageUpload({ eventId, event, onEventChange: eventState.reload });
   if (eventState.loading && !event) return <Loading label="Loading event…" />;
   if (eventState.error) return <ErrorState error={eventState.error} onRetry={eventState.reload} title="Could not load this event" />;
 
@@ -96,6 +100,8 @@ function EventDetail({ eventId }) {
         </div>
       </Card>
 
+      <FeaturedImagePanel event={event} upload={imageUpload} />
+
       <Card aria-label="Event details">
         <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">Details</h2>
         <EventForm event={event} submitLabel="Save changes" onSubmit={(values) => updateEvent(eventId, values)} onSaved={eventState.reload} />
@@ -107,6 +113,7 @@ function EventDetail({ eventId }) {
           <div className="flex flex-wrap gap-2">
             <Link to={`/admin/events/${eventId}/resources/new`} className={secondaryButton}>Add audio</Link>
             <Link to={`/admin/events/${eventId}/resources/new?type=vid`} className={secondaryButton}>Add video link</Link>
+            <Link to={`/admin/events/${eventId}/resources/new?type=doc`} className={secondaryButton}>Add document</Link>
           </div>
         </div>
         {resourcesState.loading && !resourcesState.data ? (
@@ -114,7 +121,7 @@ function EventDetail({ eventId }) {
         ) : resourcesState.error ? (
           <ErrorState error={resourcesState.error} onRetry={resourcesState.reload} title="Could not load resources" />
         ) : resources.length === 0 ? (
-          <EmptyState title="No resources yet">Add an audio draft to upload khutbah or lecture audio.</EmptyState>
+          <EmptyState title="No resources yet">Add an audio draft, a video link or a document (PDF or Word).</EmptyState>
         ) : (
           <ResourceTable resources={resources} />
         )}

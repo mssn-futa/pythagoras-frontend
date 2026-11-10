@@ -1,6 +1,7 @@
 import { Link, useParams } from 'react-router-dom'
 import { getResource } from '../api/dawahPublicService.js'
-import PlayableResource from '../components/PlayableResource.jsx'
+import EventImage from '../components/EventImage.jsx'
+import ResourceRenderer from '../components/ResourceRenderer.jsx'
 import { EmptyState, ErrorState, LoadingState } from '../components/States.jsx'
 import { formatDateTime } from '../lib/format.js'
 import { useRemote } from '../lib/useRemote.js'
@@ -25,6 +26,7 @@ export default function ContentDetailPage() {
       {resource && (
         <article className="space-y-4 rounded-xl bg-white p-5 dark:bg-gray-800">
           <header>
+            <EventImage event={event} className="mb-4 max-h-72" />
             <h1 className="text-2xl font-bold text-[#1F2937] dark:text-white">{resource.title}</h1>
             {event && (
               <p className="mt-1 text-sm text-[#6B7280] dark:text-gray-300">
@@ -36,7 +38,7 @@ export default function ContentDetailPage() {
             )}
             {event?.summary && <p className="mt-3 text-sm text-[#374151] dark:text-gray-200">{event.summary}</p>}
           </header>
-          <PlayableResource resource={resource} />
+          <ResourceRenderer resource={resource} />
         </article>
       )}
     </div>

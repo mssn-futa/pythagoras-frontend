@@ -1,4 +1,5 @@
 import { api } from '../../../../services/api'
+import { safePublicUrl } from '../lib/safeUrl.js'
 import { safePlayback } from '../lib/youtube.js'
 
 /**
@@ -20,6 +21,14 @@ function clean(params = {}) {
 
 const text = (value) => (typeof value === 'string' ? value : '')
 
+/** Display-only file name: no path parts or control characters, bounded length. */
+function cleanFileName(value) {
+  if (typeof value !== 'string') return ''
+  // eslint-disable-next-line no-control-regex
+  const base = value.replace(/[\u0000-\u001f\u007f]/g, '').split(/[\\/]/).pop().trim()
+  return base.slice(0, 200)
+}
+
 export function mapEvent(raw = {}) {
   return {
     id: raw.id,
@@ -33,6 +42,9 @@ export function mapEvent(raw = {}) {
     startTime: raw.start_time ?? null,
     endTime: raw.end_time ?? null,
     status: raw.status ?? null,
+    // Public https media URL only (null otherwise). ASSUMPTION: optional `featured_image_alt`; D2 has no alt field.
+    featuredImageUrl: safePublicUrl(raw.featured_image_url),
+    featuredImageAlt: text(raw.featured_image_alt).trim(),
   }
 }
 
@@ -45,6 +57,10 @@ export function mapResource(raw = {}) {
     status: raw.status ?? null,
     storageStatus: raw.storage_status ?? null,
     mediaUrl: text(raw.media_url),
+    // ASSUMPTION: documents expose `file_name`, `content_type` and `size_bytes` (D2: "validated MIME/file name").
+    fileName: cleanFileName(raw.file_name),
+    contentType: text(raw.content_type),
+    sizeBytes: Number.isFinite(raw.size_bytes) ? raw.size_bytes : null,
     duration: Number.isFinite(raw.duration) ? raw.duration : null,
     // Raw server playback metadata; VideoEmbed validates it before use (never trusted here).
     playback: raw.playback && typeof raw.playback === 'object' ? raw.playback : null,
@@ -77,6 +93,16 @@ function mapPage(data, mapItem) {
 /** Defensive: a visible-only endpoint should never send drafts; drop them if it does. */
 const isPublished = (item) => item.status === null || item.status === 'published'
 
+/** A document is offered only when published, ready and carrying a safe public https URL (never a signed one). */
+export function isAvailableDocument(resource) {
+  return (
+    resource?.type === 'doc' &&
+    resource.status === 'published' &&
+    resource.storageStatus === 'ready' &&
+    safePublicUrl(resource.mediaUrl) !== null
+  )
+}
+
 /** A video is shown only when published and it carries a valid YouTube ID (embed/watch URLs are re-validated at render). */
 export function isPlayableVideo(resource) {
   return resource?.type === 'vid' && resource.status === 'published' && safePlayback(resource.playback) !== null
@@ -85,7 +111,8 @@ export function isPlayableVideo(resource) {
 /**
  * Archive filters (D2): search, speaker, date_from/date_to (ISO dates, Lagos
  * calendar boundaries applied by the server), category, type=aud|vid|doc,
- * D0 page/page_size. `type` defaults to audio; DAWAH-06 passes `vid` from the archive type filter.
+ * D0 page/page_size. `type` defaults to audio; `vid`, `doc` select those types and `all` omits the
+ * filter (the archive then lists every visible type: D2 "Backend Design" archive route).
  */
 export async function listArchive({ search, speaker, dateFrom, dateTo, category, type = 'aud', page = 1, pageSize = PAGE_SIZE } = {}) {
   const data = await publicGet('/dawah/archive/', {
@@ -94,7 +121,7 @@ export async function listArchive({ search, speaker, dateFrom, dateTo, category,
     date_from: dateFrom,
     date_to: dateTo,
     category,
-    type,
+    type: type === 'all' ? undefined : type,
     page: page > 1 ? page : undefined,
     page_size: pageSize,
   })

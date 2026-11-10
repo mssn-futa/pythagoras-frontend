@@ -1,17 +1,23 @@
 import { useCallback, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Alert, Breadcrumbs, Card, ErrorState, Field, Loading, PageHeader, SelectInput, primaryButton } from "../components/ui.jsx";
-import { createAudioResourceSafely, createVideoResourceSafely, getEvent } from "../dawahAdminService.js";
+import { createAudioResourceSafely, createDocumentResourceSafely, createVideoResourceSafely, getEvent } from "../dawahAdminService.js";
 import { describeAdminError } from "../errors.js";
 import { useLoad } from "../hooks.js";
 import { youtubeLinkProblem } from "../youtubeLink.js";
+
+const KIND_COPY = {
+  aud: { crumb: "New audio", title: "New audio resource", subtitle: "Save the draft first. The audio file is uploaded on the next screen.", form: "Audio resource details" },
+  vid: { crumb: "New video link", title: "New video resource", subtitle: "Attach an existing YouTube video by its link. Nothing is uploaded to YouTube.", form: "Video resource details" },
+  doc: { crumb: "New document", title: "New document resource", subtitle: "Save the draft first. The PDF or Word file is uploaded on the next screen.", form: "Document resource details" },
+};
 
 function ResourceForm({ eventId }) {
   const navigate = useNavigate();
   const loader = useCallback(() => getEvent(eventId), [eventId]);
   const { data: event, error: loadError, loading, reload } = useLoad(loader);
   const [searchParams] = useSearchParams();
-  const [kind, setKind] = useState(searchParams.get("type") === "vid" ? "vid" : "aud");
+  const [kind, setKind] = useState(["vid", "doc"].includes(searchParams.get("type")) ? searchParams.get("type") : "aud");
   const [title, setTitle] = useState("");
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [urlClientError, setUrlClientError] = useState(null);
@@ -38,8 +44,14 @@ function ResourceForm({ eventId }) {
     try {
       const resource = video
         ? await createVideoResourceSafely(eventId, { title, youtubeUrl })
-        : await createAudioResourceSafely(eventId, { title });
-      const notice = video ? "Draft saved with the YouTube link. Check the details below, then publish when ready." : "Draft saved. Now upload the audio file.";
+        : kind === "doc"
+          ? await createDocumentResourceSafely(eventId, { title })
+          : await createAudioResourceSafely(eventId, { title });
+      const notice = video
+        ? "Draft saved with the YouTube link. Check the details below, then publish when ready."
+        : kind === "doc"
+          ? "Draft saved. Now upload the document."
+          : "Draft saved. Now upload the audio file.";
       navigate(`/admin/events/${eventId}/resources/${resource.id}`, { state: { notice } });
     } catch (caught) {
       setError(caught);
@@ -49,20 +61,24 @@ function ResourceForm({ eventId }) {
 
   return (
     <section className="max-w-2xl mx-auto space-y-6">
-      <Breadcrumbs items={[{ label: "Events", to: "/admin/events" }, { label: event.title, to: `/admin/events/${eventId}` }, { label: kind === "vid" ? "New video link" : "New audio" }]} />
+      <Breadcrumbs items={[{ label: "Events", to: "/admin/events" }, { label: event.title, to: `/admin/events/${eventId}` }, { label: KIND_COPY[kind].crumb }]} />
       <PageHeader
-        title={kind === "vid" ? "New video resource" : "New audio resource"}
-        subtitle={kind === "vid" ? "Attach an existing YouTube video by its link. Nothing is uploaded to YouTube." : "Save the draft first. The audio file is uploaded on the next screen."}
+        title={KIND_COPY[kind].title}
+        subtitle={KIND_COPY[kind].subtitle}
       />
       <Card>
-        <form onSubmit={submit} noValidate className="space-y-4" aria-label={kind === "vid" ? "Video resource details" : "Audio resource details"}>
+        <form onSubmit={submit} noValidate className="space-y-4" aria-label={KIND_COPY[kind].form}>
           <Alert>{message}</Alert>
           <SelectInput
             label="Type"
             value={kind}
             disabled={saving}
             onChange={(changeEvent) => { setKind(changeEvent.target.value); setUrlClientError(null); }}
-            options={[{ value: "aud", label: "Audio (upload a file)" }, { value: "vid", label: "Video (existing YouTube link)" }]}
+            options={[
+              { value: "aud", label: "Audio (upload a file)" },
+              { value: "vid", label: "Video (existing YouTube link)" },
+              { value: "doc", label: "Document (PDF or Word file)" },
+            ]}
             errors={fields.type}
           />
           <Field label="Title" name="title" required maxLength={200} value={title} onChange={(changeEvent) => setTitle(changeEvent.target.value)} errors={clientError ?? fields.title} />

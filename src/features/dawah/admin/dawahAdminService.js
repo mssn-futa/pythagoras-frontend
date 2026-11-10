@@ -1,5 +1,6 @@
 import { api, ApiError } from "../../../services/api";
 import { AUDIO_CONTENT_TYPE, LIST_PAGE_SIZE_MAX, PAGE_SIZE } from "./constants.js";
+import { documentContentType, imageContentType } from "./uploadFiles.js";
 import { guessVideoId } from "./youtubeLink.js";
 import { lagosLocalToUtcIso, utcIsoToLagosLocal } from "./time.js";
 
@@ -34,6 +35,11 @@ export function mapEvent(raw = {}) {
     createdAt: raw.created_at ?? null,
     updatedAt: raw.updated_at ?? null,
     featuredImageUrl: raw.featured_image_url ?? null,
+    // ASSUMPTIONS (not literal in D2, which only names featured_image_url and an admin preview_url):
+    // the admin event payload may carry a short-lived `preview_url` and image status/time fields.
+    previewUrl: raw.preview_url ?? raw.featured_image_preview_url ?? null,
+    featuredImageStatus: raw.featured_image_storage_status ?? raw.featured_image_status ?? null,
+    featuredImageUploadedAt: raw.featured_image_uploaded_at ?? null,
   };
 }
 
@@ -48,6 +54,7 @@ export function mapResource(raw = {}) {
     mediaUrl: raw.media_url ?? null,
     previewUrl: raw.preview_url ?? null,
     duration: typeof raw.duration === "number" ? raw.duration : null,
+    fileName: raw.file_name ?? null, // ASSUMPTION: D2 says documents expose a "validated MIME/file name"
     contentType: raw.content_type ?? null,
     sizeBytes: typeof raw.size_bytes === "number" ? raw.size_bytes : null,
     uploadedAt: raw.uploaded_at ?? null,
@@ -76,6 +83,7 @@ export function mapUploadIntent(raw = {}) {
     uploadUrl: raw.upload_url,
     headers: raw.headers ?? {},
     expiresAt: raw.expires_at ?? null,
+    maxSizeBytes: typeof raw.max_size_bytes === "number" ? raw.max_size_bytes : null,
   };
 }
 
@@ -224,6 +232,29 @@ export async function createAudioResource(eventId, { title }) {
   return mapResource(await api.post(resourcesUrl(eventId), { title: title.trim(), type: "aud" }));
 }
 
+/** D2 `{"title","type":"doc"}`: a draft metadata record; bytes arrive through the document upload flow. */
+export async function createDocumentResource(eventId, { title }) {
+  return mapResource(await api.post(resourcesUrl(eventId), { title: title.trim(), type: "doc" }));
+}
+
+/** Same lost-response protection as the audio draft. */
+export async function createDocumentResourceSafely(eventId, { title }) {
+  try {
+    return await createDocumentResource(eventId, { title });
+  } catch (error) {
+    if (!isTransportFailure(error)) throw error;
+    let found;
+    try {
+      const all = await listAllResources(eventId);
+      found = all.results.find((item) => item.type === "doc" && item.status === "draft" && item.title === title.trim()) ?? null;
+    } catch {
+      throw unconfirmed("draft");
+    }
+    if (found) return found;
+    throw error;
+  }
+}
+
 /** PATCH only the fields supplied. `youtubeUrl` is sent verbatim (trimmed); the server validates and normalizes it. */
 export async function updateResource(eventId, id, { title, youtubeUrl }) {
   const body = {};
@@ -277,6 +308,18 @@ export async function requestAudioUpload(eventId, resourceId, file, { signal } =
   return mapUploadIntent(await api.post(`${resourceUrl(eventId, resourceId)}audio/`, body, { signal }));
 }
 
+/** Document intent (D2 route `.../resources/{id}/document/`). Declared type comes from the validated extension. */
+export async function requestDocumentUpload(eventId, resourceId, file, { signal } = {}) {
+  const body = { file_name: file.name, content_type: documentContentType(file), size_bytes: file.size };
+  return mapUploadIntent(await api.post(`${resourceUrl(eventId, resourceId)}document/`, body, { signal }));
+}
+
+/** Featured-image intent (D2 route `/dawah/events/{id}/featured-image/`). */
+export async function requestImageUpload(eventId, file, { signal } = {}) {
+  const body = { file_name: file.name, content_type: imageContentType(file), size_bytes: file.size };
+  return mapUploadIntent(await api.post(`${eventUrl(eventId)}featured-image/`, body, { signal }));
+}
+
 /**
  * Step 3: ask the server to validate what it observed in storage. No storage
  * key is sent. The caller must re-read the resource to learn the real state.
@@ -285,6 +328,8 @@ export async function finalizeUpload(uploadId, { signal } = {}) {
   const data = await api.post(`/dawah/uploads/${uploadId}/finalize/`, undefined, { signal });
   return {
     uploadStatus: data?.upload?.status ?? data?.upload_status ?? null,
+    uploadMessage: data?.upload?.message ?? null,
+    uploadErrorCode: data?.upload?.error_code ?? null,
     previewUrl: data?.preview_url ?? data?.resource?.preview_url ?? null,
     resource: data?.resource ? mapResource(data.resource) : null,
   };
