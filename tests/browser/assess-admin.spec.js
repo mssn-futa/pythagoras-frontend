@@ -29,6 +29,7 @@ async function mockApi(page) {
 
     if (pathname === '/accounts/refresh/') return reply(route, 200, { access: 'access-1', refresh: 'refresh-1' })
     if (pathname === '/accounts/me/') return reply(route, 200, admin)
+    if (pathname === '/quiz/classes/') return reply(route, 200, { count: 0, next: null, previous: null, results: [] })
     if (pathname === '/quiz/quizzes/' && request.method() === 'GET') {
       const results = created ? [{ ...quiz, question_count: quiz.questions.length, total_points: quiz.questions.reduce((t, q) => t + q.points, 0) }] : []
       return reply(route, 200, { count: results.length, next: null, previous: null, results })

@@ -7,13 +7,14 @@ const isIntOrNull = (v) => v === null || Number.isInteger(v)
 
 /** Contract shapes the lead froze; any unknown key or wrong type is a violation. */
 export function quizBodyViolation(body, { draft, create }) {
-  const keys = draft ? ['title', 'description', 'time_limit', 'deadline', ...(create ? ['related_event'] : [])] : ['title', 'description']
+  const keys = draft ? ['title', 'description', 'time_limit', 'deadline', ...(create ? ['related_event'] : []), 'related_course'] : ['title', 'description']
   if (!only(body, keys)) return `quiz body keys ${JSON.stringify(Object.keys(body ?? {}))}`
   if ('title' in body && typeof body.title !== 'string') return 'title type'
   if ('description' in body && typeof body.description !== 'string') return 'description type'
   if ('time_limit' in body && !isIntOrNull(body.time_limit)) return 'time_limit type'
   if ('deadline' in body && !isIso(body.deadline)) return 'deadline must be UTC ISO with Z'
   if ('related_event' in body && !isIntOrNull(body.related_event)) return 'related_event must be an integer pk'
+  if ('related_course' in body && !isIntOrNull(body.related_course)) return 'related_course must be an integer pk'
   return null
 }
 
@@ -31,10 +32,11 @@ export function questionBodyViolation(body) {
  * Mirrors the contract assumptions in adminQuizService.js, including 409
  * QUIZ_IMMUTABLE for grading edits after publication.
  */
-export function createQuizBackend({ quizzes = [], results = {} } = {}) {
+export function createQuizBackend({ quizzes = [], results = {}, classes = [] } = {}) {
   const state = {
     quizzes: structuredClone(quizzes),
     results: structuredClone(results),
+    classes: structuredClone(classes),
     calls: [],
     nextId: 100,
     violations: [],
@@ -72,6 +74,16 @@ export function createQuizBackend({ quizzes = [], results = {} } = {}) {
   const immutable = () => fail(409, 'QUIZ_IMMUTABLE', 'Published quizzes cannot be edited.')
 
   const handlers = [
+    // The quiz draft form lists Arabic classes for the optional related_course selector.
+    http.get(url('/quiz/classes/'), async ({ request }) => {
+      const call = await record(request)
+      const blocked = guard(call)
+      if (blocked) return blocked
+      const number = Number(call.search.page ?? 1)
+      const size = Number(call.search.page_size ?? 20)
+      const more = number * size < state.classes.length
+      return ok({ count: state.classes.length, next: more ? `?page=${number + 1}` : null, previous: null, results: state.classes.slice((number - 1) * size, number * size) })
+    }),
     http.get(url('/quiz/quizzes/'), async ({ request }) => {
       const call = await record(request)
       const blocked = guard(call)
