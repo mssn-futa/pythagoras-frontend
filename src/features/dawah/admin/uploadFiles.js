@@ -15,6 +15,16 @@ const DOCUMENT_TYPES = Object.freeze({
 });
 const IMAGE_TYPES = Object.freeze({ jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png" });
 
+// Types browsers legitimately report for each extension (often generic or empty); the declared type still comes from the extension.
+const OCTET = "application/octet-stream";
+const BROWSER_TYPES = Object.freeze({
+  pdf: [OCTET],
+  docx: [OCTET, "application/zip", "application/x-zip-compressed"],
+  jpg: ["image/pjpeg", OCTET],
+  jpeg: ["image/pjpeg", OCTET],
+  png: [OCTET],
+});
+
 const extensionOf = (name = "") => (/\.([A-Za-z0-9]+)$/.exec(name)?.[1] ?? "").toLowerCase();
 
 export const documentContentType = (file) => DOCUMENT_TYPES[extensionOf(file?.name)] ?? null;
@@ -22,7 +32,8 @@ export const imageContentType = (file) => IMAGE_TYPES[extensionOf(file?.name)] ?
 
 function validate(file, { declared, limit, choose, only }) {
   if (!file) return choose;
-  if (!declared || (file.type && file.type !== declared)) return only;
+  const accepted = [declared, ...(BROWSER_TYPES[extensionOf(file.name)] ?? [])];
+  if (!declared || (file.type && !accepted.includes(file.type))) return only;
   if (file.size <= 0) return "That file is empty.";
   if (file.size > limit) return `That file is ${formatBytes(file.size)}. The limit is ${formatBytes(limit)}.`;
   return null;

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { isAvailableDocument, isPlayableAudio, isPlayableVideo } from '../api/dawahPublicService.js'
+import { safePublicUrl } from '../lib/safeUrl.js'
 import AudioPlayer from './AudioPlayer.jsx'
 import DocumentLink from './DocumentLink.jsx'
 import VideoEmbed from './VideoEmbed.jsx'
@@ -61,7 +62,7 @@ export default function ResourceRenderer({ resource, variant = 'full', detailPat
   }
   if (resource.type === 'aud') {
     return isPlayableAudio(resource) ? (
-      <AudioPlayer key={resource.mediaUrl} src={resource.mediaUrl} title={resource.title} durationHint={resource.duration} />
+      <AudioPlayer key={resource.mediaUrl} src={safePublicUrl(resource.mediaUrl)} title={resource.title} durationHint={resource.duration} />
     ) : (
       <Unavailable>This audio is not available right now.</Unavailable>
     )

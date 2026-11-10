@@ -309,6 +309,18 @@ describe('cancel, unmount and concurrent actions', () => {
   })
 })
 
+describe('manual re-check after a non-terminal finalize', () => {
+  test('finalize "validating": Check again succeeds once the re-read resource is ready', async () => {
+    const b = backend({ finalize: () => ok({ upload: { status: 'validating' } }) })
+    open(b)
+    const user = await chooseFile()
+    expect(await screen.findByText('The server has not marked this audio ready yet.')).toBeInTheDocument()
+    b.state.storage = 'ready'
+    await user.click(screen.getByRole('button', { name: 'Check again' }))
+    expect(await screen.findByText(/server confirmed this audio is ready/i)).toBeInTheDocument()
+  })
+})
+
 describe('replacing an already-ready draft', () => {
   test('a finalize that confirms nothing about this upload leaves the old asset un-confirmed', async () => {
     const b = backend({ storage: 'ready', uploadedAt: '2026-10-01T10:00:00Z', finalize: () => ok({}) })

@@ -77,7 +77,7 @@ export function isPlayableAudio(resource) {
     resource?.type === 'aud' &&
     resource.status === 'published' &&
     resource.storageStatus === 'ready' &&
-    /^https:\/\//i.test(resource.mediaUrl)
+    safePublicUrl(resource.mediaUrl) !== null
   )
 }
 

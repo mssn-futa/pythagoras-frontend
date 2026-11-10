@@ -79,12 +79,17 @@ export function useFileUpload({ config, current: currentRecord, onChange }) {
     if (aliveRef.current) setState((current) => ({ ...current, ...next }));
   }, []);
 
-  /** Decide the outcome from the finalize result plus the re-read resource. */
+  /**
+   * Decide the outcome from the finalize result plus the re-read record. On a manual
+   * re-check (`authoritative`) the finalize snapshot is stale (e.g. "validating"), so the
+   * re-read record alone decides; the replacement baseline (uploaded_at change) still applies.
+   */
   const evaluate = useCallback(
-    (record) => {
+    (record, authoritative = false) => {
       const { noun, nounFile, read } = configRef.current;
-      const uploadStatus = finalizeInfoRef.current?.uploadStatus ?? null;
-      const fresh = read(record, finalizeInfoRef.current);
+      const info = authoritative ? null : finalizeInfoRef.current;
+      const uploadStatus = info?.uploadStatus ?? null;
+      const fresh = read(record, info);
       if (uploadStatus === "expired") {
         // Terminal: the intent can no longer be finalized. A new file choice requests a new intent for the same parent.
         intentRef.current = null;
@@ -116,12 +121,12 @@ export function useFileUpload({ config, current: currentRecord, onChange }) {
     [patch],
   );
 
-  const confirmServerState = useCallback(async () => {
+  const confirmServerState = useCallback(async (authoritative = false) => {
     try {
       const fresh = await configRef.current.fetchFresh();
       if (!aliveRef.current) return;
       onChangeRef.current?.(fresh);
-      evaluate(fresh);
+      evaluate(fresh, authoritative);
     } catch (error) {
       patch({ phase: "pending", message: `Could not confirm the ${configRef.current.noun} state: ${error.message}`, retryAction: "check" });
     }
@@ -231,7 +236,7 @@ export function useFileUpload({ config, current: currentRecord, onChange }) {
   );
 
   const retry = useCallback(() => {
-    if (state.retryAction === "check") return confirmServerState();
+    if (state.retryAction === "check") return confirmServerState(true);
     if (state.retryAction === "choose") {
       fileRef.current = null;
       intentRef.current = null;

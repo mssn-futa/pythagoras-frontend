@@ -92,6 +92,10 @@ describe('file validation helpers', () => {
     expect(documentContentType(file('a.exe', ''))).toBeNull()
     expect(validateDocumentFile(file('a.pdf', PDF))).toBeNull()
     expect(validateDocumentFile(file('a.docx', ''))).toBeNull() // browsers often report no type for docx
+    expect(validateDocumentFile(file('a.pdf', 'application/octet-stream'))).toBeNull()
+    expect(validateDocumentFile(file('a.docx', 'application/zip'))).toBeNull()
+    expect(validateDocumentFile(file('a.pdf', 'application/zip'))).toMatch(/Only PDF/)
+    expect(documentContentType(file('a.docx', 'application/zip'))).toBe(DOCX) // declared type stays extension-derived
     expect(validateDocumentFile(file('a.pdf', 'image/png'))).toMatch(/Only PDF/)
     expect(validateDocumentFile(file('a.xlsx', 'application/vnd.ms-excel'))).toMatch(/Only PDF/)
     expect(validateDocumentFile(file('a.pdf', PDF, 0))).toMatch(/empty/)
@@ -103,6 +107,9 @@ describe('file validation helpers', () => {
     expect(imageContentType(file('a.jpg', ''))).toBe('image/jpeg')
     expect(imageContentType(file('a.jpeg', ''))).toBe('image/jpeg')
     expect(imageContentType(file('a.png', ''))).toBe('image/png')
+    expect(validateImageFile(file('a.jpg', 'image/pjpeg'))).toBeNull()
+    expect(validateImageFile(file('a.png', 'application/octet-stream'))).toBeNull()
+    expect(validateImageFile(file('a.png', 'image/jpeg'))).toMatch(/Only JPEG/)
     expect(validateImageFile(file('a.gif', 'image/gif'))).toMatch(/Only JPEG/)
     expect(validateImageFile(file('a.svg', 'image/svg+xml'))).toMatch(/Only JPEG/)
     expect(validateImageFile(file('a.png', 'application/pdf'))).toMatch(/Only JPEG/)
@@ -197,7 +204,7 @@ describe('document resource', () => {
     expect(b.log.intents).toHaveLength(1)
   })
 
-  test('finalize status "expired" is terminal: choose the file again, never "check again"; same for audio flow', async () => {
+  test('finalize status "expired" is terminal for documents: choose the file again, never "check again"', async () => {
     const b = backend({ kind: 'doc', finalize: () => ok({ upload: { id: 21, status: 'expired', error_code: 'UPLOAD_EXPIRED', message: 'Expired.' } }) })
     openDoc(b)
     await choose(/PDF or Word file/, file('slides.pdf', PDF))
@@ -267,7 +274,7 @@ describe('event featured image', () => {
   })
 
   test('the public featured_image_url is never used for the admin preview, and an http preview is refused', async () => {
-    const b = backend({ kind: 'image', state: { image: { featured_image_url: 'https://media.example.test/event.png', preview_url: 'http://insecure.example.test/p.png' } } })
+    const b = backend({ kind: 'image', state: { image: { featured_image_url: 'https://media.example.test/event.png', featured_image_preview_url: 'http://insecure.example.test/p.png' } } })
     openEvent(b)
     expect(await screen.findByText(/No preview is available right now/)).toBeInTheDocument()
     expect(screen.queryByAltText(/Featured image preview/)).not.toBeInTheDocument()
@@ -275,7 +282,7 @@ describe('event featured image', () => {
   })
 
   test('an existing admin preview_url is shown on load', async () => {
-    const b = backend({ kind: 'image', state: { image: { featured_image_url: 'https://media.example.test/e.png', preview_url: `${R2_ORIGIN}/preview/e.png?X-Amz-Signature=s` } } })
+    const b = backend({ kind: 'image', state: { image: { featured_image_url: 'https://media.example.test/e.png', featured_image_storage_status: 'ready', featured_image_preview_url: `${R2_ORIGIN}/preview/e.png?X-Amz-Signature=s` } } })
     openEvent(b)
     expect(await screen.findByAltText(/Featured image preview/)).toHaveAttribute('src', expect.stringContaining('/preview/e.png'))
   })
@@ -305,6 +312,109 @@ describe('event featured image', () => {
     expect(await screen.findByText(/could not be decoded/)).toBeInTheDocument()
     expect(screen.queryByText(/server confirmed this image/i)).not.toBeInTheDocument()
     expect(screen.queryByAltText(/Featured image preview/)).not.toBeInTheDocument()
+  })
+
+  test('finalize "validating": Check again succeeds once the re-read event shows the image ready (not stuck on the finalize snapshot)', async () => {
+    const b = backend({ kind: 'image', finalize: () => ok({ upload: { id: 21, status: 'validating' } }) })
+    openEvent(b)
+    const user = await choose(/Image file/, png())
+    expect(await screen.findByText('The server has not marked this image ready yet.')).toBeInTheDocument()
+    expect(screen.queryByText(/server confirmed this image/i)).not.toBeInTheDocument()
+    b.state.image = { featured_image_url: 'https://media.example.test/e.png', featured_image_storage_status: 'ready', featured_image_preview_url: `${R2_ORIGIN}/preview/e.png?X-Amz-Signature=s` }
+    await user.click(screen.getByRole('button', { name: 'Check again' }))
+    expect(await screen.findByText(/server confirmed this image is ready/i)).toBeInTheDocument()
+    expect(await screen.findByAltText(/Featured image preview/)).toBeInTheDocument()
+  })
+
+  test('images report "pending" until the server says ready; failed is terminal', async () => {
+    const b = backend({ kind: 'image', finalize: () => ok({ upload: { status: 'validating' } }) })
+    b.state.image = { featured_image_storage_status: 'pending' }
+    openEvent(b)
+    const user = await choose(/Image file/, png())
+    await screen.findByRole('button', { name: 'Check again' })
+    b.state.image = { featured_image_storage_status: 'failed' }
+    await user.click(screen.getByRole('button', { name: 'Check again' }))
+    expect(await screen.findByText(/did not accept this image/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Choose another file' })).toBeInTheDocument()
+  })
+
+  test('replacing the image of a PUBLISHED event: explicit ready finalize confirms; the old image alone does not', async () => {
+    const old = { featured_image_url: 'https://media.example.test/old.png', featured_image_storage_status: 'ready', featured_image_uploaded_at: '2026-10-01T10:00:00Z' }
+    const b = backend({ kind: 'image', state: { image: old }, finalize: () => ok({ upload: { status: 'validating' } }) })
+    openEvent(b)
+    expect(await screen.findByText(/Replacing the image of a published event keeps the old image visible/)).toBeInTheDocument()
+    const user = await choose(/Image file/, png())
+    expect(await screen.findByText('The server has not marked this image ready yet.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Check again' })) // unchanged uploaded_at: still the previous image
+    expect(await screen.findByText(/still shows the previous image/)).toBeInTheDocument()
+    expect(screen.queryByText(/server confirmed this image/i)).not.toBeInTheDocument()
+    b.state.image = { ...old, featured_image_url: 'https://media.example.test/new.png', featured_image_uploaded_at: '2026-10-09T10:00:00Z' }
+    await user.click(screen.getByRole('button', { name: 'Check again' }))
+    expect(await screen.findByText(/server confirmed this image is ready/i)).toBeInTheDocument()
+    expect(b.log.intents).toHaveLength(1)
+  })
+
+  test('replacing on a published event with an explicit ready finalize outcome confirms immediately', async () => {
+    const b = backend({ kind: 'image', state: { image: { featured_image_url: 'https://media.example.test/old.png', featured_image_storage_status: 'ready' } } })
+    openEvent(b)
+    await choose(/Image file/, png())
+    expect(await screen.findByText(/server confirmed this image is ready/i)).toBeInTheDocument()
+  })
+
+  test('Cancel during the image PUT aborts it and never finalizes', async () => {
+    const b = backend({ kind: 'image' })
+    let signal = null
+    transport.putToSignedUrl.mockImplementationOnce(({ signal: s }) => {
+      signal = s
+      return new Promise((_resolve, reject) => s.addEventListener('abort', () => reject(new transport.UploadTransportError('aborted'))))
+    })
+    openEvent(b)
+    const user = await choose(/Image file/, png())
+    await waitFor(() => expect(signal).not.toBeNull())
+    await user.click(screen.getByRole('button', { name: 'Cancel upload' }))
+    expect(await screen.findByText('Upload cancelled. Your draft is saved.')).toBeInTheDocument()
+    expect(signal.aborted).toBe(true)
+    expect(b.log.finalizes).toEqual([])
+  })
+
+  test('leaving the page during the image PUT aborts it and skips finalize', async () => {
+    const b = backend({ kind: 'image' })
+    let signal = null
+    transport.putToSignedUrl.mockImplementationOnce(({ signal: s }) => {
+      signal = s
+      return new Promise((_resolve, reject) => s.addEventListener('abort', () => reject(new transport.UploadTransportError('aborted'))))
+    })
+    const view = openEvent(b)
+    await choose(/Image file/, png())
+    await waitFor(() => expect(signal).not.toBeNull())
+    view.unmount()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(signal.aborted).toBe(true)
+    expect(b.log.finalizes).toEqual([])
+  })
+
+  test('event publish/unpublish/delete are disabled while the image uploads, and return after cancel', async () => {
+    const b = backend({ kind: 'image' })
+    transport.putToSignedUrl.mockImplementationOnce(({ signal: s }) => new Promise((_resolve, reject) => s.addEventListener('abort', () => reject(new transport.UploadTransportError('aborted')))))
+    openEvent(b)
+    const user = await choose(/Image file/, png())
+    expect(await screen.findByText(/featured-image upload is in progress/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Unpublish event' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Cancel upload' }))
+    await screen.findByText('Upload cancelled. Your draft is saved.')
+    expect(screen.getByRole('button', { name: 'Unpublish event' })).toBeEnabled()
+  })
+
+  test('alt text is saved with PATCH featured_image_alt and used by the preview', async () => {
+    const patch = apiHandler('patch', '/dawah/events/3/', ({ entry }) => ok(rawEvent({ status: 'published', featured_image_url: 'https://media.example.test/e.png', featured_image_preview_url: `${R2_ORIGIN}/preview/e.png?X-Amz-Signature=s`, featured_image_alt: entry.body.featured_image_alt })))
+    const b = backend({ kind: 'image', state: { image: { featured_image_url: 'https://media.example.test/e.png', featured_image_storage_status: 'ready', featured_image_preview_url: `${R2_ORIGIN}/preview/e.png?X-Amz-Signature=s` } } })
+    renderAdminApp('/admin/events/3', [patch.handler, ...b.handlers])
+    const user = userEvent.setup()
+    const input = await screen.findByLabelText(/alt text/)
+    await user.type(input, '  Worshippers at the mosque ')
+    await user.click(screen.getByRole('button', { name: 'Save description' }))
+    expect(await screen.findByText('Image description saved.')).toBeInTheDocument()
+    expect(patch.rec.calls[0].body).toEqual({ featured_image_alt: 'Worshippers at the mosque' })
   })
 
   test('the event page offers Add document next to audio and video', async () => {

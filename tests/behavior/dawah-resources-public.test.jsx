@@ -56,6 +56,8 @@ describe('safePublicUrl', () => {
       'https://user:pw@media.example.test/a.pdf',
       'https://media.example.test/a.pdf?X-Amz-Signature=abc&X-Amz-Expires=900',
       'https://media.example.test/a.pdf?token=abc',
+      'https://account123.r2.cloudflarestorage.com/bucket/a.pdf',
+      'https://r2.cloudflarestorage.com/a.pdf',
       ' https://media.example.test/a.pdf',
       '',
       null,
@@ -70,6 +72,18 @@ describe('ResourceRenderer (typed)', () => {
   test('audio renders the existing player', () => {
     renderIt(audio(8))
     expect(screen.getByRole('group', { name: /Audio player/ })).toBeInTheDocument()
+  })
+
+  test.each([
+    ['http', 'http://media.example.test/a.mp3'],
+    ['presign host', 'https://acct.r2.cloudflarestorage.com/bucket/a.mp3'],
+    ['signed', 'https://media.example.test/a.mp3?X-Amz-Signature=abc'],
+    ['userinfo', 'https://u:p@media.example.test/a.mp3'],
+    ['javascript', 'javascript:alert(1)'],
+  ])('audio with an unsafe media URL (%s) renders no player', (_name, media_url) => {
+    const { container } = renderIt(audio(8, { media_url }))
+    expect(container.querySelector('audio, a')).toBeNull()
+    expect(screen.getByRole('status')).toHaveTextContent('This audio is not available right now.')
   })
 
   test('video renders the privacy-enhanced embed and the watch link', () => {

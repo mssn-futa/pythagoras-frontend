@@ -51,6 +51,7 @@ function EventDetail({ eventId }) {
   };
 
   const published = event.status === "published";
+  const uploading = imageUpload.busy;
   const resources = resourcesState.data?.results ?? [];
 
   return (
@@ -71,6 +72,7 @@ function EventDetail({ eventId }) {
             ? `Published${event.publishedAt ? ` ${formatLagos(event.publishedAt)}` : ""}. Unpublishing hides the event and all its resources from discovery without changing their own states. Links already shared may still work.`
             : "Publishing needs valid metadata and timing. Audio is published separately once it is ready."}
         </p>
+        {uploading && <p className="mt-2 text-sm text-amber-800 dark:text-amber-300">A featured-image upload is in progress. Publication actions are unavailable until it finishes or is cancelled.</p>}
         <div className="mt-3 flex flex-wrap gap-2">
           {published ? (
             <ConfirmAction
@@ -78,10 +80,11 @@ function EventDetail({ eventId }) {
               confirmLabel="Unpublish"
               prompt="Hide this event and all its resources?"
               busy={busy}
+              disabled={uploading}
               onConfirm={() => run(() => unpublishEvent(eventId), "Event unpublished.")}
             />
           ) : (
-            <button type="button" className={primaryButton} disabled={busy} onClick={() => run(() => publishEvent(eventId), "Event published.")}>
+            <button type="button" className={primaryButton} disabled={busy || uploading} onClick={() => run(() => publishEvent(eventId), "Event published.")}>
               {event.status === "unpublished" ? "Republish event" : "Publish event"}
             </button>
           )}
@@ -94,13 +97,14 @@ function EventDetail({ eventId }) {
               prompt="Permanently delete this event and its draft resources?"
               tone="danger"
               busy={busy}
+              disabled={uploading}
               onConfirm={() => run(() => deleteEvent(eventId), "Event deleted.", () => navigate("/admin/events"))}
             />
           )}
         </div>
       </Card>
 
-      <FeaturedImagePanel event={event} upload={imageUpload} />
+      <FeaturedImagePanel event={event} upload={imageUpload} onAltSaved={eventState.reload} />
 
       <Card aria-label="Event details">
         <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">Details</h2>

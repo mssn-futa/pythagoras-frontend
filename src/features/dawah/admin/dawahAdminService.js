@@ -35,10 +35,10 @@ export function mapEvent(raw = {}) {
     createdAt: raw.created_at ?? null,
     updatedAt: raw.updated_at ?? null,
     featuredImageUrl: raw.featured_image_url ?? null,
-    // ASSUMPTIONS (not literal in D2, which only names featured_image_url and an admin preview_url):
-    // the admin event payload may carry a short-lived `preview_url` and image status/time fields.
-    previewUrl: raw.preview_url ?? raw.featured_image_preview_url ?? null,
+    // Admin-only image fields (DAWAH-07 contract): short-lived preview, status, upload time, alt text.
+    previewUrl: raw.featured_image_preview_url ?? raw.preview_url ?? null,
     featuredImageStatus: raw.featured_image_storage_status ?? raw.featured_image_status ?? null,
+    featuredImageAlt: raw.featured_image_alt ?? "",
     featuredImageUploadedAt: raw.featured_image_uploaded_at ?? null,
   };
 }
@@ -207,6 +207,11 @@ export async function createEvent(values) {
 
 export async function updateEvent(id, values) {
   return mapEvent(await api.patch(eventUrl(id), toEventPayload(values)));
+}
+
+/** Alt text for the featured image. ASSUMPTION: `featured_image_alt` is a writable event field (D2 names no alt field). */
+export async function updateEventImageAlt(id, alt) {
+  return mapEvent(await api.patch(eventUrl(id), { featured_image_alt: alt.trim() }));
 }
 
 export const deleteEvent = (id) => api.delete(eventUrl(id));
