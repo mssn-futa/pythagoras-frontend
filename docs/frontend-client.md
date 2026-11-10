@@ -42,11 +42,33 @@ refreshes (anonymous endpoints, login/register/refresh). `skipAuthRefresh: true`
 sends the bearer header but does not refresh on 401 (logout uses this).
 
 Authenticated 401 behaviour: concurrent 401s share one `POST /accounts/refresh/`;
-each failed request is retried at most once with the new token. A second 401,
-a missing refresh token, or a failed refresh clears the session and signals
-sign-out; guards then redirect to `/sign-in?next=<current path>`. 403 never
-refreshes. Direct R2 signed PUTs must use a separate plain `fetch`/axios call
-with no bearer token, never this client.
+each failed request is retried at most once with the new token (a request whose
+401 arrives after another request already refreshed reuses that token). A second
+401 or a missing refresh token clears the session and signals sign-out; guards
+then redirect to `/sign-in?next=<current path>`. 403 never refreshes. Direct R2
+signed PUTs must use a separate plain `fetch`/axios call with no bearer token,
+never this client.
+
+Refresh failure policy. D0 says "on refresh failure, clear session and redirect
+to sign-in". PLAT-04 interprets this as a **definitive** refresh failure:
+
+| `/accounts/refresh/` outcome | Session | Original request rejects with |
+|---|---|---|
+| 400 / 401 / 403 | Cleared, sign-out signalled | `401 SESSION_EXPIRED` |
+| Network / timeout (`status: 0`), 429, 5xx | Kept (tokens untouched, no sign-out) | The normalized refresh error (`NETWORK_ERROR`, `TIMEOUT`, `THROTTLED`, `SERVER_ERROR`, ...) |
+
+Session restoration on load follows the same rule: a definitive refresh
+rejection, or 401/403 from `GET /accounts/me/`, clears the session and shows
+sign-in; transient failures keep the stored session and show a "We couldn't
+restore your session" screen with **Retry** and **Sign out**
+(`useAuth().status === 'restore_failed'`, `retryRestore()`).
+
+Session generations. `clearSession()` (logout, forced sign-out, a new login)
+starts a new session generation. A refresh result or 401 retry that belongs to
+an older generation is discarded: it never re-stores tokens and never retries
+the request with the new session's credentials. Logout clears the session
+first, then waits for any in-flight refresh so it revokes the newest rotated
+refresh token.
 
 Display errors with `error.message` and map `error.fields[name]` onto inputs.
 `src/features/auth/formErrors.js` (`describeFormError`) does this for forms.
@@ -63,11 +85,15 @@ import {
 const { status, user, isAuthenticated, isAdmin, login, logout, updateProfile } = useAuth()
 ```
 
-`status` is `restoring | authenticated | anonymous`; guards render a loading
-state until restoration (refresh → `GET /accounts/me/`) finishes, so protected
-pages never render early. `endReason` is `logout` or `expired` after a sign-out.
+`status` is `restoring | restore_failed | authenticated | anonymous`; guards
+render a loading state until restoration (refresh → `GET /accounts/me/`)
+finishes, keeping the protected URL (no intermediate sign-in redirect), so
+protected pages never render early. Admin authority is `role === 'admin'` on an
+active user only; `is_staff`/`is_superuser` never grant it. `endReason` is `logout` or `expired` after a sign-out.
 Return destinations accept only in-app paths; absolute, protocol-relative,
-backslash, scheme, control-character and sign-in/up values are dropped.
+backslash, scheme, control-character, dot-segment (`.`/`..`, including `%2e`)
+and sign-in/up values are dropped, and the normalized result is re-checked so it
+can never start with `//`.
 
 ## Route slots
 
