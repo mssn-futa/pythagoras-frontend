@@ -1,9 +1,16 @@
 import { useState } from "react";
-import { CATEGORY_SUGGESTIONS } from "../constants.js";
+import { EVENT_CATEGORIES, isCanonicalCategory } from "../constants.js";
 import { describeAdminError, validateEventValues } from "../errors.js";
 import { toEventFormValues } from "../dawahAdminService.js";
 import { lagosLocalToUtcIso } from "../time.js";
-import { Alert, Field, primaryButton } from "./ui.jsx";
+import { Alert, Field, SelectInput, primaryButton } from "./ui.jsx";
+
+const OTHER = "__other__";
+const CATEGORY_OPTIONS = [
+  { value: "", label: "No category" },
+  ...EVENT_CATEGORIES,
+  { value: OTHER, label: "Other…" },
+];
 
 const FORM_FIELDS = ["title", "category", "tags", "speakers", "location", "start_time", "end_time", "summary", "description"];
 
@@ -13,6 +20,8 @@ const FORM_FIELDS = ["title", "category", "tags", "speakers", "location", "start
  */
 export default function EventForm({ event, submitLabel, onSubmit, onSaved }) {
   const [values, setValues] = useState(() => toEventFormValues(event));
+  // "Other…" mode: free text for a non-canonical category (also preselected when editing one).
+  const [otherCategory, setOtherCategory] = useState(() => Boolean(values.category) && !isCanonicalCategory(values.category));
   const [clientErrors, setClientErrors] = useState({});
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -27,6 +36,11 @@ export default function EventForm({ event, submitLabel, onSubmit, onSaved }) {
       setValues((current) => ({ ...current, [name]: changeEvent.target.value }));
     },
   });
+
+  const setCategory = (category) => {
+    setSaved(false);
+    setValues((current) => ({ ...current, category }));
+  };
 
   const handleSubmit = async (submitEvent) => {
     submitEvent.preventDefault();
@@ -53,11 +67,28 @@ export default function EventForm({ event, submitLabel, onSubmit, onSaved }) {
       {saved && <Alert tone="success">Event saved.</Alert>}
       <Field label="Title" name="title" maxLength={200} required {...bind("title")} errors={fields.title} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <Field label="Category" name="category" list="dawah-category-options" {...bind("category")} errors={fields.category} />
-          <datalist id="dawah-category-options">
-            {CATEGORY_SUGGESTIONS.map((category) => <option key={category} value={category} />)}
-          </datalist>
+        <div className="space-y-2">
+          <SelectInput
+            label="Category"
+            name="category"
+            options={CATEGORY_OPTIONS}
+            value={otherCategory ? OTHER : values.category}
+            onChange={(changeEvent) => {
+              const choice = changeEvent.target.value;
+              setOtherCategory(choice === OTHER);
+              setCategory(choice === OTHER ? "" : choice);
+            }}
+            errors={otherCategory ? undefined : fields.category}
+          />
+          {otherCategory && (
+            <Field
+              label="Other category"
+              name="category_other"
+              value={values.category}
+              onChange={(changeEvent) => setCategory(changeEvent.target.value)}
+              errors={fields.category}
+            />
+          )}
         </div>
         <Field label="Tags" hint="(comma separated)" name="tags" {...bind("tags")} errors={fields.tags} />
         <Field label="Speakers" name="speakers" {...bind("speakers")} errors={fields.speakers} />

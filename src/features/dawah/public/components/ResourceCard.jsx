@@ -1,11 +1,12 @@
 import { Link } from 'react-router-dom'
+import { categoryLabel } from '../../categories.js'
 import { formatDate, formatDurationLabel } from '../lib/format.js'
 import EventImage from './EventImage.jsx'
 import ResourceRenderer from './ResourceRenderer.jsx'
 
 export default function ResourceCard({ resource }) {
   const { event } = resource
-  const meta = [event?.speakers, formatDate(event?.startTime), formatDurationLabel(resource.duration)].filter(Boolean)
+  const meta = [categoryLabel(event?.category), event?.speakers, formatDate(event?.startTime), formatDurationLabel(resource.duration)].filter(Boolean)
   return (
     <li className="rounded-xl bg-white p-4 dark:bg-gray-800">
       <EventImage event={event} className="mb-3 max-h-48" />

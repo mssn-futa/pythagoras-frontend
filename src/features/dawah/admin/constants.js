@@ -34,7 +34,6 @@ export const AUDIO_CONTENT_TYPE = "audio/mpeg";
 export const PAGE_SIZE = 20;
 export const LIST_PAGE_SIZE_MAX = 100;
 
-/** Suggestions only: the API accepts a free-text category (assumption). */
-export const CATEGORY_SUGGESTIONS = Object.freeze(["jumuah", "lecture", "halaqah", "seminar"]);
+export { EVENT_CATEGORIES, isCanonicalCategory } from "../categories.js";
 
 export const LAGOS_TIME_ZONE = "Africa/Lagos";
