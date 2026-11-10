@@ -17,7 +17,7 @@ export default function DraftsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    listBroadcasts({ page, pageSize: PAGE_SIZE, states: ["draft"] }).then(
+    listBroadcasts({ page, pageSize: PAGE_SIZE, kind: "drafts" }).then(
       (next) => {
         if (cancelled) return;
         setData(next);

@@ -24,6 +24,10 @@ describe('state wording', () => {
     expect(ACCEPTANCE_DISCLAIMER).toMatch(/does not confirm/i)
   })
 
+  test('completed help does not claim inbox receipt and points at counts', () => {
+    expect(broadcastStateText('completed').help).toBe('Finished with no failed or uncertain messages; see counts.')
+  })
+
   test('unknown states render as-is rather than as sent', () => {
     expect(deliveryStateText('mystery').label).toBe('mystery')
   })
@@ -68,6 +72,10 @@ describe('form validation', () => {
     expect(validateForm(form({ audienceType: 'level', level: '' })).audience).toBeTruthy()
     expect(validateForm(form({ audienceType: 'level', level: '999' })).audience).toBeTruthy()
     expect(validateForm(form({ audienceType: 'level', level: '300' }))).toEqual({})
+  })
+  test('an unknown audience blocks saving and is labelled unknown', () => {
+    expect(validateForm(form({ audienceType: 'unknown' })).audience[0]).toMatch(/unrecognised audience/)
+    expect(audienceLabel({ type: 'unknown' })).toBe('Unknown audience')
   })
   test('audience labels', () => {
     expect(audienceLabel({ type: 'all' })).toBe('All active students')

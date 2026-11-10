@@ -88,6 +88,17 @@ test('admin composes, saves, previews safely, confirms queueing and sees queued 
   const dialog = page.getByRole('dialog', { name: 'Queue this broadcast?' })
   await expect(dialog.getByText('Level: 300 level')).toBeVisible()
   await expect(dialog.getByText(/cannot be changed/)).toBeVisible()
+  // Keyboard: focus stays in the dialog, the page behind is inert, Escape restores focus to the opener.
+  await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused()
+  expect(await page.evaluate(() => Boolean(document.getElementById('root').closest('[inert]') || [...document.getElementById('root').children].some((el) => el.hasAttribute('inert'))))).toBe(true)
+  for (let i = 0; i < 4; i += 1) {
+    await page.keyboard.press('Tab')
+    expect(await page.evaluate(() => Boolean(document.activeElement.closest('[role=dialog]')))).toBe(true)
+  }
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
+  await expect(page.getByRole('button', { name: 'Queue for sending…' })).toBeFocused()
+  await page.getByRole('button', { name: 'Queue for sending…' }).click()
   expect(api.count('POST', '/dawah/broadcasts/7/queue/')).toBe(0)
   await dialog.getByRole('button', { name: 'Queue broadcast' }).click()
 

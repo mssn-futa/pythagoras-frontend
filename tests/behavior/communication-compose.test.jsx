@@ -268,12 +268,119 @@ describe('drafts list', () => {
     open(backend, '/admin/communication/drafts')
     expect(await screen.findByRole('link', { name: 'Draft one' })).toHaveAttribute('href', '/admin/communication/drafts/1')
     expect(screen.queryByText('Sent one')).toBeNull()
-    expect(backend.calls[0].query.state).toBe('draft')
+    expect(backend.calls[0].query).toEqual({ kind: 'drafts', page: '1', page_size: '20' })
   })
 
   test('empty and error states', async () => {
     open(createBackend(), '/admin/communication/drafts')
     expect(await screen.findByText(/No drafts yet/)).toBeVisible()
     resetSession()
+  })
+})
+
+describe('contract edge cases', () => {
+  test('a rich draft opens read-only with an edit-in-rich-editor notice and is never PATCHed', async () => {
+    const backend = createBackend({ broadcasts: [wireBroadcast({ id: 9, body_format: 'rich', body: 'Key lessons', subject: 'Rich' })] })
+    open(backend, '/admin/communication/drafts/9')
+    expect(await screen.findByText(/Edit it in the rich editor/)).toBeVisible()
+    expect(screen.getByTestId('rich-readonly-body')).toHaveTextContent('Key lessons')
+    expect(screen.queryByLabelText('Subject')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Save/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Queue/ })).toBeNull()
+    expect(backend.only('PATCH')).toEqual([])
+  })
+
+  test('an unrecognised audience is not shown as "all" and blocks saving', async () => {
+    const backend = createBackend({ broadcasts: [wireBroadcast({ id: 9, audience: { type: 'galaxy' } })] })
+    open(backend, '/admin/communication/drafts/9')
+    const actor = userEvent.setup()
+    await screen.findByLabelText('Subject')
+    for (const radio of screen.getAllByRole('radio')) expect(radio).not.toBeChecked()
+    expect(screen.getByText(/unrecognised audience/)).toBeVisible()
+    await actor.type(screen.getByLabelText('Subject'), '!')
+    await actor.click(screen.getByRole('button', { name: 'Save changes' }))
+    expect(backend.only('PATCH')).toEqual([])
+    await actor.click(screen.getByRole('radio', { name: 'All active students' }))
+    await actor.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(backend.only('PATCH')).toHaveLength(1))
+    expect(backend.only('PATCH')[0].body.audience).toEqual({ type: 'all' })
+  })
+
+  test('field errors are linked to their inputs with aria-describedby', async () => {
+    open(createBackend())
+    const actor = userEvent.setup()
+    await screen.findByLabelText('Subject')
+    await actor.click(screen.getByRole('button', { name: 'Save draft' }))
+    for (const [label, message] of [['Subject', 'Enter a subject.'], ['Message (plain text)', 'Enter the message text.']]) {
+      const input = screen.getByLabelText(label)
+      expect(input).toHaveAttribute('aria-invalid', 'true')
+      const target = document.getElementById(input.getAttribute('aria-describedby'))
+      expect(target).toHaveTextContent(message)
+    }
+  })
+
+  test('preview posts {version} and a stale version offers reload', async () => {
+    const backend = createBackend({ broadcasts: [wireBroadcast({ id: 7, version: 3 })] })
+    open(backend, '/admin/communication/drafts/7')
+    const actor = userEvent.setup()
+    await actor.click(await screen.findByRole('button', { name: 'Preview' }))
+    await screen.findByTestId('preview-body')
+    expect(backend.only('POST', '/preview/')[0].body).toEqual({ version: 3 })
+    backend.store.get(7).version = 4
+    await actor.click(screen.getByRole('button', { name: 'Preview' }))
+    expect(await screen.findByText('This draft was changed somewhere else.')).toBeVisible()
+    expect(screen.queryByTestId('preview-body')).toBeNull()
+  })
+
+  test('server action tokens gate preview and queue', async () => {
+    const backend = createBackend({ broadcasts: [wireBroadcast({ id: 7, eligible_actions: ['edit'] })] })
+    open(backend, '/admin/communication/drafts/7')
+    await screen.findByLabelText('Subject')
+    expect(screen.getByRole('button', { name: 'Preview' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Queue for sending…' })).toBeDisabled()
+  })
+})
+
+describe('queue dialog keyboard behaviour', () => {
+  test('moves focus into the dialog, keeps Tab inside, closes on Escape and restores focus to the opener', async () => {
+    const backend = createBackend({ broadcasts: [wireBroadcast({ id: 7, version: 3 })] })
+    open(backend, '/admin/communication/drafts/7')
+    const actor = userEvent.setup()
+    const opener = await screen.findByRole('button', { name: 'Queue for sending…' })
+    await actor.click(opener)
+    const dialog = await screen.findByRole('dialog', { name: 'Queue this broadcast?' })
+    await waitFor(() => expect(dialog).toContainElement(document.activeElement))
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Cancel' }))
+    for (let i = 0; i < 5; i += 1) {
+      await actor.tab()
+      expect(dialog).toContainElement(document.activeElement)
+    }
+    // Background inertness is asserted in the browser spec; jsdom only proves focus never escapes.
+    await actor.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    await waitFor(() => expect(opener).toHaveFocus())
+    expect(backend.only('POST', '/queue/')).toHaveLength(0)
+  })
+})
+
+describe('double submit', () => {
+  test('save sends one request for two quick clicks', async () => {
+    const backend = createBackend({ latency: 150 })
+    open(backend)
+    const actor = userEvent.setup()
+    await fillBasics(actor)
+    await actor.dblClick(screen.getByRole('button', { name: 'Save draft' }))
+    await waitFor(() => expect(location()).toBe('/admin/communication/drafts/1'), { timeout: 3000 })
+    expect(backend.only('POST', '/dawah/broadcasts/')).toHaveLength(1)
+  })
+
+  test('queue sends one request for two quick confirms', async () => {
+    const backend = createBackend({ broadcasts: [wireBroadcast({ id: 7, version: 3 })], latency: 150 })
+    open(backend, '/admin/communication/drafts/7')
+    const actor = userEvent.setup()
+    await actor.click(await screen.findByRole('button', { name: 'Queue for sending…' }))
+    await actor.dblClick(screen.getByRole('button', { name: 'Queue broadcast' }))
+    await waitFor(() => expect(location()).toBe('/admin/communication/history/7'), { timeout: 3000 })
+    expect(backend.only('POST', '/queue/')).toHaveLength(1)
   })
 })

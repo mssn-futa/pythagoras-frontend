@@ -57,11 +57,11 @@ describe('payload and response mapping', () => {
   test('list and deliveries send paging and state filters', async () => {
     const backend = createBackend({ broadcasts: [wireBroadcast({ state: 'queued' })], deliveries: { 7: [wireDelivery({ state: 'failed' })] } })
     server.use(...backend.handlers)
-    await listBroadcasts({ page: 2, pageSize: 10, states: ['queued', 'processing'] })
-    const deliveries = await listDeliveries(7, { page: 3, state: 'failed' })
-    expect(backend.calls[0].query).toEqual({ page: '2', page_size: '10', state: 'queued,processing' })
-    expect(backend.calls[1].query).toEqual({ page: '3', page_size: '20', state: 'failed' })
-    expect(deliveries.results[0]).toMatchObject({ id: 12, recipient: 'one@example.test', state: 'failed', eligibleActions: null })
+    await listBroadcasts({ kind: 'history', page: 2, pageSize: 10, state: 'queued' })
+    const deliveries = await listDeliveries(7, { page: 1, state: 'failed' })
+    expect(backend.calls[0].query).toEqual({ kind: 'history', page: '2', page_size: '10', state: 'queued' })
+    expect(backend.calls[1].query).toEqual({ page: '1', page_size: '20', state: 'failed' })
+    expect(deliveries.results[0]).toMatchObject({ id: 12, recipient: 'one@example.test', state: 'failed', eligibleActions: ['retry'] })
   })
 
   test('detail is read by id', async () => {
@@ -70,13 +70,36 @@ describe('payload and response mapping', () => {
   })
 
   test('preview keeps text only and drops every html field', async () => {
-    server.use(...createBackend({ broadcasts: [wireBroadcast({ id: 7 })] }).handlers)
-    const preview = await previewBroadcast(7)
+    const backend = createBackend({ broadcasts: [wireBroadcast({ id: 7 })] })
+    server.use(...backend.handlers)
+    const preview = await previewBroadcast(7, 1)
+    expect(backend.calls[0]).toMatchObject({ method: 'POST', path: '/dawah/broadcasts/7/preview/', body: { version: 1 } })
     expect(preview).toEqual({ subject: 'Weekly Da’wah summary', body: 'Summary and recording link', renderedText: 'Summary and recording link', audienceCount: 42 })
     expect(normalizePreview({ subject: 's', body: 'b', body_html: '<script>', rendered_html: '<b>' })).not.toHaveProperty('bodyHtml')
   })
 
-  test('missing optional fields get safe defaults', () => {
-    expect(normalizeBroadcast({ id: 1 })).toMatchObject({ subject: '', state: 'draft', audience: { type: 'all' }, counts: counts({ cancelled: 0 }), eligibleActions: [] })
+  test('missing optional fields get safe defaults, but a missing audience is never "all"', () => {
+    expect(normalizeBroadcast({ id: 1 })).toMatchObject({ subject: '', state: 'draft', audience: { type: 'unknown' }, counts: counts({ cancelled: 0 }), eligibleActions: null })
+  })
+
+  test.each([[null], [undefined], [{}], [{ type: 'everyone' }], [{ type: 'ALL' }], ['all']])('unknown or malformed audience %j stays unknown', (audience) => {
+    expect(normalizeBroadcast({ id: 1, audience }).audience.type).toBe('unknown')
+  })
+
+  test('frozen payload names map exactly', () => {
+    const mapped = normalizeBroadcast(wireBroadcast({ body_format: 'rich', creator_id: 2, counts: counts({ cancelled: 3 }), eligible_actions: ['edit', 'queue'] }))
+    expect(mapped).toMatchObject({ bodyFormat: 'rich', creatorId: 2, counts: { cancelled: 3 }, eligibleActions: ['edit', 'queue'] })
+  })
+
+  test('preview of a stale version is a 409 BROADCAST_VERSION_CONFLICT', async () => {
+    server.use(...createBackend({ broadcasts: [wireBroadcast({ id: 7, version: 4 })] }).handlers)
+    await expect(previewBroadcast(7, 3)).rejects.toMatchObject({ status: 409, code: 'BROADCAST_VERSION_CONFLICT' })
+  })
+
+  test('the strict fixture rejects the old comma-list drift and unknown params with 400', async () => {
+    server.use(...createBackend().handlers)
+    await expect(listBroadcasts({ kind: 'history', state: 'queued,processing' })).rejects.toMatchObject({ status: 400, fields: { state: expect.any(Array) } })
+    await expect(listBroadcasts({ kind: 'everything' })).rejects.toMatchObject({ status: 400 })
+    await expect(listDeliveries(7, { state: 'sent,failed' })).rejects.toMatchObject({ status: 400 })
   })
 })

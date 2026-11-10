@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { listBroadcasts } from "../api/broadcastsApi.js";
 import { BroadcastStateBadge, cardClass, CountsLine, EmptyState, LoadingLine, PageError, Pager, secondaryButton } from "../components/common.jsx";
@@ -15,11 +15,14 @@ export default function HistoryPage() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
-  // History never lists drafts; an unfiltered view asks for every non-draft state.
-  const fetchPage = useCallback(
-    () => listBroadcasts({ page, pageSize: PAGE_SIZE, states: state ? [state] : BROADCAST_STATES }),
-    [page, state],
-  );
+  // kind=history never lists drafts; `state` narrows to one state. Only the newest
+  // request may update the screen: a slow earlier page/filter/poll response resolves to null.
+  const latest = useRef(0);
+  const fetchPage = useCallback(async () => {
+    const token = (latest.current += 1);
+    const next = await listBroadcasts({ kind: "history", page, pageSize: PAGE_SIZE, state: state || undefined });
+    return token === latest.current ? next : null;
+  }, [page, state]);
 
   const [attempt, setAttempt] = useState(0);
   const load = useCallback(() => setAttempt((value) => value + 1), []);
@@ -28,7 +31,7 @@ export default function HistoryPage() {
     let cancelled = false;
     fetchPage().then(
       (next) => {
-        if (cancelled) return;
+        if (cancelled || !next) return;
         setData(next);
         setError(null);
       },
@@ -40,7 +43,8 @@ export default function HistoryPage() {
   }, [fetchPage, attempt]);
 
   const refresh = async () => {
-    setData(await fetchPage());
+    const next = await fetchPage();
+    if (next) setData(next);
   };
   const outstanding = Boolean(data?.results.some(isOutstanding));
   const { paused, restart } = usePolling(refresh, { active: outstanding });

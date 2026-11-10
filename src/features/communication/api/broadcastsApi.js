@@ -15,7 +15,9 @@ const toCount = (value) => (Number.isInteger(value) && value >= 0 ? value : 0);
 
 /** Wire audience ({type, department?, level?}) → form-friendly object. */
 export function normalizeAudience(raw) {
-  const type = AUDIENCE_TYPES.includes(raw?.type) ? raw.type : "all";
+  // Missing/unknown/malformed audiences are never defaulted to "all": they stay
+  // "unknown" so the editor blocks saving until an admin chooses one.
+  const type = AUDIENCE_TYPES.includes(raw?.type) ? raw.type : "unknown";
   return {
     type,
     department: type === "department" ? String(raw?.department ?? "") : "",
@@ -52,7 +54,8 @@ export function normalizeBroadcast(raw) {
     queuedAt: raw.queued_at ?? null,
     recipientCount: toCount(raw.recipient_count),
     counts: normalizeCounts(raw.counts),
-    eligibleActions: Array.isArray(raw.eligible_actions) ? raw.eligible_actions : [],
+    // null when the server sent no hint; tokens: edit, delete, preview, queue, retry.
+    eligibleActions: Array.isArray(raw.eligible_actions) ? raw.eligible_actions : null,
   };
 }
 
@@ -99,9 +102,11 @@ export function toDraftPayload({ subject, body, audience }) {
   return { subject: subject.trim(), body, audience: toAudiencePayload(audience) };
 }
 
-export async function listBroadcasts({ page = 1, pageSize = 20, states } = {}, config = {}) {
+/** kind: "drafts" | "history" (frozen D4 list contract); `state` narrows history to one state. */
+export async function listBroadcasts({ kind, page = 1, pageSize = 20, state } = {}, config = {}) {
   const params = { page, page_size: pageSize };
-  if (states?.length) params.state = states.join(",");
+  if (kind) params.kind = kind;
+  if (state) params.state = state;
   return normalizePage(await api.get(BROADCAST_PATH, { ...config, params }), normalizeBroadcast);
 }
 
@@ -117,8 +122,8 @@ export async function updateDraft(id, draft, version) {
   return normalizeBroadcast(await api.patch(detailPath(id), { ...toDraftPayload(draft), version }));
 }
 
-export async function previewBroadcast(id) {
-  return normalizePreview(await api.post(`${detailPath(id)}preview/`, {}));
+export async function previewBroadcast(id, version) {
+  return normalizePreview(await api.post(`${detailPath(id)}preview/`, { version }));
 }
 
 /** 202 first time and on replay; resolves to the acknowledgement as a broadcast. */

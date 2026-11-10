@@ -3,10 +3,10 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { POLL_INTERVAL_MS, POLL_MAX_POLLS } from '../../src/features/communication/model.js'
 import { usePolling } from '../../src/features/communication/usePolling.js'
-import { admin, fail, recorder, resetSession, sessionHandlers, storeRefreshToken, url, useApiOrigin } from '../fixtures/auth.js'
-import { counts, createBackend, wireBroadcast, wireDelivery } from '../fixtures/communication.js'
+import { admin, fail, ok, recorder, resetSession, sessionHandlers, storeRefreshToken, url, useApiOrigin } from '../fixtures/auth.js'
+import { counts, createBackend, page, wireBroadcast, wireDelivery } from '../fixtures/communication.js'
 import { TestApp } from '../fixtures/TestApp.jsx'
-import { http } from 'msw'
+import { delay, http } from 'msw'
 import { server } from '../mocks/server.js'
 
 beforeEach(useApiOrigin)
@@ -154,7 +154,7 @@ describe('history page', () => {
     expect(screen.getByText('Completed with failures', { selector: 'span' })).toBeVisible()
     expect(screen.getByText(/does not confirm that the message reached an inbox/)).toBeVisible()
     expect(screen.queryByText(/delivered/i)).toBeNull()
-    expect(backend.calls[0].query.state).toBe('queued,processing,completed,completed_with_errors,uncertain')
+    expect(backend.calls[0].query).toEqual({ kind: 'history', page: '1', page_size: '20' })
   })
 
   test('state filter sends exactly the chosen state', async () => {
@@ -273,5 +273,155 @@ describe('detail: outcomes and retry', () => {
     await actor.selectOptions(screen.getByLabelText('Outcome'), 'failed')
     await waitFor(() => expect(backend.only('GET', '/deliveries/').at(-1).query.state).toBe('failed'))
     await waitFor(() => expect(screen.queryByText('sent@example.test')).toBeNull())
+  })
+})
+
+describe('hostile server text is rendered as text', () => {
+  const hostile = {
+    subject: '<img src=x onerror=alert(1)>Subject',
+    email: '<script>alert(2)</script>@example.test',
+    code: '<b>bad_code</b>',
+  }
+  const noInjected = () => {
+    const main = document.querySelector('main')
+    expect(main.querySelector('img, script, b, iframe, svg[onload]')).toBeNull()
+  }
+
+  test('history list', async () => {
+    const backend = createBackend({ broadcasts: [queuedBroadcast({ subject: hostile.subject, state: 'completed' })] })
+    open(backend, '/admin/communication/history')
+    expect(await screen.findByRole('link', { name: hostile.subject })).toBeVisible()
+    noInjected()
+  })
+
+  test('detail: subject, body, recipient and error code', async () => {
+    const backend = createBackend({
+      broadcasts: [queuedBroadcast({ subject: hostile.subject, body: hostile.email, state: 'completed_with_errors' })],
+      deliveries: { 7: [wireDelivery({ snapshot_email: hostile.email, state: 'failed', error_code: hostile.code, provider_email_id: hostile.code })] },
+    })
+    open(backend, '/admin/communication/history/7')
+    expect(await screen.findByText(hostile.email, { selector: 'td' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: hostile.subject })).toBeVisible()
+    expect(screen.getByText(`Error code: ${hostile.code}`)).toBeVisible()
+    expect(screen.getByTestId('detail-body').textContent).toBe(hostile.email)
+    noInjected()
+  })
+})
+
+describe('stale response guards', () => {
+  test('history: a slow earlier filter response never overwrites a newer one', async () => {
+    const backend = createBackend({ broadcasts: [queuedBroadcast({ id: 2, subject: 'Waiting' })] })
+    open(backend, '/admin/communication/history')
+    server.use(
+      http.get(url('/dawah/broadcasts/'), async ({ request }) => {
+        const state = new URL(request.url).searchParams.get('state')
+        if (state === 'queued') {
+          await delay(400)
+          return ok(page([wireBroadcast({ id: 99, subject: 'Slow stale row', state: 'queued', queued_at: '2026-11-10T10:00:00Z' })]))
+        }
+        if (state === 'uncertain') return ok(page([]))
+        return undefined
+      }),
+    )
+    const actor = userEvent.setup()
+    await screen.findByRole('link', { name: 'Waiting' })
+    await actor.selectOptions(screen.getByLabelText('State'), 'queued')
+    await actor.selectOptions(screen.getByLabelText('State'), 'uncertain')
+    expect(await screen.findByText(/No broadcasts match/)).toBeVisible()
+    await new Promise((resolve) => setTimeout(resolve, 700))
+    expect(screen.queryByText('Slow stale row')).toBeNull()
+    expect(screen.getByText(/No broadcasts match/)).toBeVisible()
+  })
+
+  test('detail: a slow earlier delivery filter response never overwrites a newer one', async () => {
+    const backend = createBackend({ broadcasts: [queuedBroadcast({ state: 'completed_with_errors' })], deliveries: { 7: [wireDelivery({ id: 1, snapshot_email: 'first@example.test', state: 'sent' })] } })
+    open(backend, '/admin/communication/history/7')
+    server.use(
+      http.get(url('/dawah/broadcasts/7/deliveries/'), async ({ request }) => {
+        const state = new URL(request.url).searchParams.get('state')
+        if (state === 'failed') {
+          await delay(400)
+          return ok(page([wireDelivery({ id: 5, snapshot_email: 'stale@example.test', state: 'failed' })]))
+        }
+        if (state === 'skipped') return ok(page([]))
+        return undefined
+      }),
+    )
+    const actor = userEvent.setup()
+    await screen.findByText('first@example.test')
+    await actor.selectOptions(screen.getByLabelText('Outcome'), 'failed')
+    await actor.selectOptions(screen.getByLabelText('Outcome'), 'skipped')
+    expect(await screen.findByText('No deliveries match this outcome.')).toBeVisible()
+    await new Promise((resolve) => setTimeout(resolve, 700))
+    expect(screen.queryByText('stale@example.test')).toBeNull()
+    expect(screen.getByText('No deliveries match this outcome.')).toBeVisible()
+  })
+})
+
+describe('pagination in the UI', () => {
+  test('history: Next and Previous request the right page', async () => {
+    const rows = Array.from({ length: 45 }, (_, i) => queuedBroadcast({ id: i + 1, subject: `Mail ${i + 1}`, state: 'completed' }))
+    const backend = createBackend({ broadcasts: rows })
+    open(backend, '/admin/communication/history')
+    const actor = userEvent.setup()
+    expect(await screen.findByRole('link', { name: 'Mail 1' })).toBeVisible()
+    expect(screen.getByText('Page 1 of 3')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled()
+    await actor.click(screen.getByRole('button', { name: 'Next' }))
+    expect(await screen.findByRole('link', { name: 'Mail 21' })).toBeVisible()
+    expect(screen.queryByRole('link', { name: 'Mail 1' })).toBeNull()
+    expect(screen.getByText('Page 2 of 3')).toBeVisible()
+    expect(backend.calls.at(-1).query).toEqual({ kind: 'history', page: '2', page_size: '20' })
+    await actor.click(screen.getByRole('button', { name: 'Previous' }))
+    expect(await screen.findByRole('link', { name: 'Mail 1' })).toBeVisible()
+  })
+
+  test('deliveries: Next requests page 2', async () => {
+    const rows = Array.from({ length: 25 }, (_, i) => wireDelivery({ id: i + 1, snapshot_email: `r${i + 1}@example.test`, state: 'sent' }))
+    const backend = createBackend({ broadcasts: [queuedBroadcast({ state: 'completed' })], deliveries: { 7: rows } })
+    open(backend, '/admin/communication/history/7')
+    const actor = userEvent.setup()
+    expect(await screen.findByText('r1@example.test')).toBeVisible()
+    await actor.click(screen.getByRole('button', { name: 'Next' }))
+    expect(await screen.findByText('r21@example.test')).toBeVisible()
+    expect(screen.queryByText('r1@example.test')).toBeNull()
+    expect(backend.only('GET', '/deliveries/').at(-1).query).toEqual({ page: '2', page_size: '20' })
+  })
+})
+
+describe('error states', () => {
+  test('detail load failure shows a scoped error and can be retried', async () => {
+    const backend = createBackend({ broadcasts: [queuedBroadcast({ state: 'completed' })], deliveries: { 7: [] } })
+    open(backend, '/admin/communication/history/7')
+    server.use(http.get(url('/dawah/broadcasts/7/'), () => fail(500, 'SERVER_ERROR', 'The server had a problem.'), { once: true }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('The server had a problem.')
+    expect(screen.queryByText('Delivery outcomes')).toBeNull()
+    await userEvent.click(within(alert).getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByText('Delivery outcomes')).toBeVisible()
+  })
+
+  test('network failure is reported, not shown as an empty or sent state', async () => {
+    const backend = createBackend({ broadcasts: [queuedBroadcast({ state: 'completed' })], deliveries: { 7: [] } })
+    open(backend, '/admin/communication/history/7')
+    server.use(http.get(url('/dawah/broadcasts/7/deliveries/'), () => Response.error(), { once: true }))
+    expect(await screen.findByRole('alert')).toBeVisible()
+    expect(screen.queryByText('No deliveries match this outcome.')).toBeNull()
+  })
+})
+
+describe('double submit', () => {
+  test('retry sends one request for two quick clicks', async () => {
+    const backend = createBackend({
+      broadcasts: [queuedBroadcast({ state: 'completed_with_errors' })],
+      deliveries: { 7: [wireDelivery({ id: 12, state: 'failed' })] },
+      latency: 150,
+    })
+    open(backend, '/admin/communication/history/7')
+    const actor = userEvent.setup()
+    await actor.click(await screen.findByRole('checkbox', { name: /Select/ }))
+    await actor.dblClick(screen.getByRole('button', { name: 'Retry selected (1)' }))
+    expect(await screen.findByText(/Retry requested\./)).toBeVisible()
+    expect(backend.only('POST', '/retry/')).toHaveLength(1)
   })
 })

@@ -38,8 +38,8 @@ function DeliveryRow({ delivery, selected, onToggle }) {
       <td className="py-2 pr-3"><DeliveryStateBadge state={delivery.state} /></td>
       <td className="py-2 pr-3 text-sm">{delivery.attemptCount}</td>
       <td className="break-all py-2 pr-3 text-xs text-gray-600 dark:text-gray-300">
-        {delivery.providerEmailId ? <>Resend ID: {delivery.providerEmailId}</> : null}
-        {delivery.errorCode ? <>Error code: {delivery.errorCode}</> : null}
+        {delivery.providerEmailId ? <span className="block">Resend ID: {delivery.providerEmailId}</span> : null}
+        {delivery.errorCode ? <span className="block">Error code: {delivery.errorCode}</span> : null}
         {delivery.sentAt ? <span className="block">Accepted {formatLagos(delivery.sentAt)}</span> : null}
       </td>
     </tr>

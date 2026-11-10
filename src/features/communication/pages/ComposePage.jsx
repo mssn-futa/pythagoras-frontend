@@ -6,7 +6,7 @@ import { createDraft, getBroadcast, previewBroadcast, queueBroadcast, updateDraf
 import AudienceSelector from "../components/AudienceSelector.jsx";
 import { cardClass, LoadingLine, PageError, primaryButton, secondaryButton } from "../components/common.jsx";
 import QueueConfirmDialog from "../components/QueueConfirmDialog.jsx";
-import { draftToForm, EMPTY_FORM, formKey, formToDraft, validateForm } from "../model.js";
+import { allows, audienceLabel, draftToForm, EMPTY_FORM, formKey, formToDraft, validateForm } from "../model.js";
 
 const FORM_FIELDS = ["subject", "body", "audience", "department", "level"];
 const VERSION_CONFLICT = "BROADCAST_VERSION_CONFLICT";
@@ -26,7 +26,11 @@ function Field({ label, errors, children, htmlFor }) {
         {label}
       </label>
       {children}
-      {message && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{message}</p>}
+      {message && (
+        <p id={`${htmlFor}-error`} className="mt-1 text-xs text-red-600 dark:text-red-400">
+          {message}
+        </p>
+      )}
     </div>
   );
 }
@@ -149,9 +153,12 @@ function Editor({ id }) {
     setError(null);
     setPreviewing(true);
     try {
-      setPreview({ version: draft.version, data: await previewBroadcast(draft.id) });
+      setPreview({ version: draft.version, data: await previewBroadcast(draft.id, draft.version) });
     } catch (caught) {
-      failWith(caught);
+      if (caught?.code === VERSION_CONFLICT) {
+        setConflict(true);
+        setPreview(null);
+      } else failWith(caught);
     } finally {
       setPreviewing(false);
     }
@@ -179,6 +186,24 @@ function Editor({ id }) {
 
   if (status === "loading") return <LoadingLine>Loading draft…</LoadingLine>;
   if (status === "error") return <PageError error={loadError} onRetry={load} />;
+  if (draft && draft.state === "draft" && draft.bodyFormat === "rich") {
+    // Rich drafts are never opened in the plain editor: saving here would flatten them.
+    return (
+      <div className={`${cardClass} space-y-3`}>
+        <h2 className="text-lg font-semibold text-[#1F2937] dark:text-white">Draft #{draft.id} is a rich-text draft</h2>
+        <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          This draft uses rich formatting. Edit it in the rich editor; it cannot be edited or saved from this plain-text form.
+        </p>
+        <dl className="space-y-2 text-sm">
+          <div><dt className="font-medium">Subject</dt><dd className="break-words">{draft.subject}</dd></div>
+          <div><dt className="font-medium">Audience</dt><dd>{audienceLabel(draft.audience)}</dd></div>
+        </dl>
+        <pre data-testid="rich-readonly-body" className="whitespace-pre-wrap break-words rounded-lg bg-gray-50 p-3 font-sans text-sm text-[#1F2937]">
+          {draft.body}
+        </pre>
+      </div>
+    );
+  }
   if (draft && draft.state !== "draft") {
     return (
       <div className={cardClass}>
@@ -219,6 +244,7 @@ function Editor({ id }) {
             value={form.subject}
             onChange={(event) => set({ subject: event.target.value })}
             aria-invalid={fieldErrors.subject ? true : undefined}
+            aria-describedby={fieldErrors.subject ? `${formId}-subject-error` : undefined}
             maxLength={250}
           />
         </Field>
@@ -230,17 +256,18 @@ function Editor({ id }) {
             value={form.body}
             onChange={(event) => set({ body: event.target.value })}
             aria-invalid={fieldErrors.body ? true : undefined}
+            aria-describedby={fieldErrors.body ? `${formId}-body-error` : undefined}
           />
         </Field>
-        <AudienceSelector value={form} errors={audienceErrors(fieldErrors)} onChange={(next) => set(next)} />
+        <AudienceSelector value={form} errors={audienceErrors(fieldErrors) ?? (form.audienceType === "unknown" ? validateForm(form).audience : undefined)} onChange={(next) => set(next)} />
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <button type="submit" className={primaryButton} disabled={saving || conflict || (Boolean(draft) && !dirty)}>
             {saving ? "Saving…" : draft ? "Save changes" : "Save draft"}
           </button>
-          <button type="button" className={secondaryButton} onClick={runPreview} disabled={!saved || previewing}>
+          <button type="button" className={secondaryButton} onClick={runPreview} disabled={!saved || previewing || !allows(draft, "preview")}>
             {previewing ? "Loading preview…" : "Preview"}
           </button>
-          <button type="button" className={secondaryButton} onClick={() => setConfirming(true)} disabled={!saved}>
+          <button type="button" className={secondaryButton} onClick={() => setConfirming(true)} disabled={!saved || !allows(draft, "queue")}>
             Queue for sending…
           </button>
         </div>

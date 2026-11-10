@@ -17,7 +17,7 @@ const BROADCAST_STATE_TEXT = {
   draft: { label: "Draft", tone: "gray", help: "Not queued. Nothing has been sent." },
   queued: { label: "Queued", tone: "blue", help: "Saved for sending. Delivery is pending." },
   processing: { label: "Sending in progress", tone: "blue", help: "Messages are being handed to Resend." },
-  completed: { label: "Completed", tone: "green", help: "Resend accepted every message." },
+  completed: { label: "Completed", tone: "green", help: "Finished with no failed or uncertain messages; see counts." },
   completed_with_errors: { label: "Completed with failures", tone: "amber", help: "Some messages were not accepted by Resend." },
   uncertain: { label: "Uncertain outcome", tone: "red", help: "Acceptance of some messages could not be determined. Investigate before sending again." },
 };
@@ -56,6 +56,9 @@ export function isOutstanding(broadcast) {
   return true;
 }
 
+/** Server action tokens are authoritative when sent; without them nothing is hidden. */
+export const allows = (broadcast, token) => !Array.isArray(broadcast?.eligibleActions) || broadcast.eligibleActions.includes(token);
+
 /** Retry only for known failed, unsent records; never sent/uncertain/skipped. */
 export function canRetryDelivery(delivery) {
   if (delivery.state !== "failed") return false;
@@ -64,6 +67,7 @@ export function canRetryDelivery(delivery) {
 }
 
 export function audienceLabel(audience) {
+  if (audience?.type === "unknown") return "Unknown audience";
   if (audience?.type === "department") return `Department: ${audience.department || "(none chosen)"}`;
   if (audience?.type === "level") return `Level: ${audience.level ? `${audience.level} level` : "(none chosen)"}`;
   return "All active students";
@@ -99,7 +103,8 @@ export function validateForm(form) {
   else if (subject.length > SUBJECT_MAX_LENGTH) errors.subject = [`Subject must be ${SUBJECT_MAX_LENGTH} characters or fewer.`];
   else if (hasControlCharacter(subject)) errors.subject = ["Subject must be a single line."];
   if (!form.body.trim()) errors.body = ["Enter the message text."];
-  if (form.audienceType === "department" && !form.department.trim()) errors.audience = ["Enter a department."];
+  if (form.audienceType === "unknown") errors.audience = ["This draft has an unrecognised audience. Choose who should receive it."];
+  else if (form.audienceType === "department" && !form.department.trim()) errors.audience = ["Enter a department."];
   else if (form.audienceType === "level" && !LEVELS.includes(form.level)) errors.audience = ["Choose a level."];
   return errors;
 }
