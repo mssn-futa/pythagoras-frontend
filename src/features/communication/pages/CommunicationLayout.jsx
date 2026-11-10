@@ -4,6 +4,7 @@ const TABS = [
   { to: "/admin/communication", label: "Compose", end: true },
   { to: "/admin/communication/drafts", label: "Drafts" },
   { to: "/admin/communication/history", label: "History" },
+  { to: "/admin/communication/automations", label: "Automations" },
 ];
 
 const tabClass = ({ isActive }) =>
@@ -16,7 +17,7 @@ export default function CommunicationLayout() {
   return (
     <div className="mx-auto max-w-5xl">
       <h1 className="text-2xl font-bold text-[#1F2937] dark:text-white">Communication</h1>
-      <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Compose email broadcasts to students and review what happened to each message.</p>
+      <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Compose email broadcasts to students, review what happened to each message, and manage automatic summaries and reminders.</p>
       <nav aria-label="Communication sections" className="mt-4 flex overflow-x-auto border-b border-gray-200 dark:border-gray-700">
         {TABS.map((tab) => (
           <NavLink key={tab.to} to={tab.to} end={tab.end} className={tabClass}>
