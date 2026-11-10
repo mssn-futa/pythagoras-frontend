@@ -1,10 +1,16 @@
 import { NavLink } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faHome, faBook, faBriefcase, faUser, faMosque } from "@fortawesome/free-solid-svg-icons";
+import { faHome, faUser, faRightFromBracket, faUserShield } from "@fortawesome/free-solid-svg-icons";
+import { useAuth } from "../../features/auth/AuthContext.js";
+import { useSignOut } from "../../features/auth/useSignOut.js";
 import logo from "../../assets/logo.png";
 import profilePic from "../../assets/profile.png";
 
 const SideBar = ({ isOpen, toggleSidebar }) => {
+  const { user, isAuthenticated, isAdmin } = useAuth();
+  const { signOut, signingOut } = useSignOut();
+  const fullName = [user?.first_name, user?.last_name].filter(Boolean).join(" ");
+
   return (
     <aside
       className={`fixed top-0 left-0 h-full bg-white dark:bg-[#000000] shadow-lg border-none w-[270px]
@@ -28,47 +34,57 @@ const SideBar = ({ isOpen, toggleSidebar }) => {
           hoverTo="#04AF43"
           onClick={toggleSidebar}
         />
-        <SideBarLink 
-          icon={faMosque} 
-          label="Dawah" 
-          to="/dawah" 
-          hoverFrom="#C002C0" 
-          hoverTo="#FF31FF"
-          onClick={toggleSidebar}
-        />
-        <SideBarLink 
-          icon={faBook} 
-          label="Academics" 
-          to="/academics" 
-          hoverFrom="#0284C7" 
-          hoverTo="#0EA5E9"
-          onClick={toggleSidebar}
-        />
-        <SideBarLink 
-          icon={faBriefcase} 
-          label="Empowerment Hub" 
-          to="/empowerment" 
-          hoverFrom="#FFB300" 
-          hoverTo="#EAB308"
-          onClick={toggleSidebar}
-        />
-        <SideBarLink 
-          icon={faUser} 
-          label="Profile" 
-          to="/profile" 
-          hoverFrom="#2D2D2D" 
-          hoverTo="#949292"
-          onClick={toggleSidebar}
-        />
+        {isAuthenticated && (
+          <SideBarLink 
+            icon={faUser} 
+            label="Profile" 
+            to="/profile" 
+            hoverFrom="#2D2D2D" 
+            hoverTo="#949292"
+            onClick={toggleSidebar}
+          />
+        )}
+        {isAdmin && (
+          <SideBarLink 
+            icon={faUserShield} 
+            label="Admin panel" 
+            to="/admin" 
+            hoverFrom="#047857" 
+            hoverTo="#10B981"
+            onClick={toggleSidebar}
+          />
+        )}
       </nav>
 
-      <div className="mt-auto flex items-center gap-3 pt-6">
-        <img src={profilePic} alt="Profile" className="h-10 w-10 rounded-full" />
-        <div>
-          <p className="font-medium dark:text-[#FFFFFF]">Salami Abdullah</p>
-          <p className="text-sm text-gray-600 -mt-1 dark:text-[#FFFFFF]">Computer Science</p>
+      {isAuthenticated ? (
+        <div className="mt-auto pt-6 space-y-4">
+          <div className="flex items-center gap-3">
+            <img src={profilePic} alt="" className="h-10 w-10 rounded-full" />
+            <div className="min-w-0">
+              <p className="font-medium dark:text-[#FFFFFF] truncate">{fullName}</p>
+              {user?.department && (
+                <p className="text-sm text-gray-600 -mt-1 dark:text-[#FFFFFF] truncate">{user.department}</p>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={signOut}
+            disabled={signingOut}
+            className="w-full flex items-center gap-3 p-2 rounded-lg text-[#4B5563] dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-all disabled:opacity-70"
+          >
+            <FontAwesomeIcon icon={faRightFromBracket} />
+            <span>{signingOut ? "Signing out..." : "Sign out"}</span>
+          </button>
         </div>
-      </div>
+      ) : (
+        <NavLink
+          to="/sign-in"
+          className="mt-auto block text-center py-3 rounded-lg text-white font-medium bg-gradient-to-r from-[#2A742F] to-[#04AF43]"
+        >
+          Sign in
+        </NavLink>
+      )}
     </aside>
   );
 };
