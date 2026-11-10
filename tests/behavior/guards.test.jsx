@@ -223,7 +223,7 @@ describe('domain route slots', () => {
     expect(await screen.findByRole('heading', { name: 'Admin slot page' })).toBeVisible()
   })
 
-  test('shipped slot modules are build-safe arrays of route objects', async () => {
+  test('shipped slot modules export build-safe route arrays', async () => {
     const modules = await Promise.all([
       import('../../src/features/dawah/adminRoutes.jsx'),
       import('../../src/features/dawah/studentRoutes.jsx'),
@@ -233,7 +233,11 @@ describe('domain route slots', () => {
     ])
     for (const module of modules) {
       expect(Array.isArray(module.default)).toBe(true)
-      for (const route of module.default) expect(route.path ?? route.index).toBeDefined()
+      for (const route of module.default) {
+        expect(typeof route.path).toBe('string')
+        expect(route.path.startsWith('/')).toBe(false)
+        expect(route.element ?? route.children).toBeTruthy()
+      }
     }
   })
 })
