@@ -22,12 +22,16 @@ export default function ResourcePicker({ selected, onChange, disabled, error, hi
   const [loading, setLoading] = useState(false);
   const latest = useRef(0);
 
+  const controller = useRef(null);
   const load = useCallback(async () => {
+    controller.current?.abort(); // a newer search supersedes the older request
+    controller.current = new AbortController();
+    const { signal } = controller.current;
     const token = ++latest.current;
     setLoading(true);
     setFailure(null);
     try {
-      const loaded = await searchResources({ ...applied, page, pageSize: PAGE_SIZE });
+      const loaded = await searchResources({ ...applied, page, pageSize: PAGE_SIZE, signal });
       if (token === latest.current) setData(loaded);
     } catch (problem) {
       if (token === latest.current) setFailure(describeClassError(problem).message);
@@ -39,6 +43,15 @@ export default function ResourcePicker({ selected, onChange, disabled, error, hi
   useEffect(() => {
     if (!disabled) load();
   }, [load, disabled]);
+
+  // Unmount: abort the in-flight search and make sure its result is ignored.
+  useEffect(
+    () => () => {
+      latest.current += 1;
+      controller.current?.abort();
+    },
+    [],
+  );
 
   const chosen = new Set(selected.map((resource) => resource.id));
   const add = (resource) => onChange([...selected, resource]);

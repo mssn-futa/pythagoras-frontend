@@ -14,12 +14,13 @@ export default function RelatedCourseSelect({ value, onChange, disabled, error }
 
   useEffect(() => {
     let live = true;
+    const controller = new AbortController(); // unmount aborts any in-flight page request
     // Page through every class (not just the first 100).
     (async () => {
       try {
         const all = [];
         for (let page = 1; page <= 50; page += 1) {
-          const loaded = await listClasses({ page, pageSize: 100 });
+          const loaded = await listClasses({ page, pageSize: 100, signal: controller.signal });
           all.push(...loaded.results);
           if (!loaded.next) break;
         }
@@ -30,6 +31,7 @@ export default function RelatedCourseSelect({ value, onChange, disabled, error }
     })();
     return () => {
       live = false;
+      controller.abort();
     };
   }, []);
 
