@@ -1,4 +1,4 @@
-import React, { useState, Fragment, useEffect } from 'react';
+import React, { useState, Fragment } from 'react';
 import QuestionEditor from '../../components/questions';
 import { Dialog, Transition } from '@headlessui/react';
 import { 
@@ -30,7 +30,14 @@ const Academics = () => {
     updatedAt: null,
   });
 
-  const [savedQuizzes, setSavedQuizzes] = useState([]);
+  const [savedQuizzes, setSavedQuizzes] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('savedQuizzes')) || [];
+    } catch (error) {
+      console.error('Error loading quizzes:', error);
+      return [];
+    }
+  });
   const [toasts, setToasts] = useState([]);
   const [modal, setModal] = useState({ 
     isOpen: false,
@@ -93,18 +100,6 @@ const Academics = () => {
   };
 
   // ===== LOCAL STORAGE =====
-  useEffect(() => {
-    // Load saved quizzes from localStorage on component mount
-    const saved = localStorage.getItem('savedQuizzes');
-    if (saved) {
-      try {
-        setSavedQuizzes(JSON.parse(saved));
-      } catch (error) {
-        console.error('Error loading quizzes:', error);
-      }
-    }
-  }, []);
-
   const saveQuizToStorage = (quiz) => {
     const updatedQuizzes = [...savedQuizzes];
     const existingIndex = updatedQuizzes.findIndex(q => q.id === quiz.id);
@@ -285,7 +280,7 @@ const Academics = () => {
 
     setTimeout(() => {
       const isNew = !quizData.id;
-      const updatedQuizzes = saveQuizToStorage(quizData);
+      saveQuizToStorage(quizData);
       
       setToasts(prev => prev.filter(t => t.id !== loadingId));
       
@@ -345,9 +340,9 @@ const Academics = () => {
   };
 
   // ===== RENDER FUNCTIONS =====
-  const renderModeButtons = () => {
+  let modeButtons;
     if (mode === 'create') {
-      return (
+      modeButtons = (
         <div className="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3 pt-4 sm:pt-6 border-t border-gray-200 dark:border-gray-600">
           <button
             type="button"
@@ -373,7 +368,7 @@ const Academics = () => {
     }
 
     if (mode === 'view') {
-      return (
+      modeButtons = (
         <div className="flex flex-col sm:flex-row justify-between pt-4 sm:pt-6 border-t border-gray-200 dark:border-gray-600">
           <button
             type="button"
@@ -406,7 +401,7 @@ const Academics = () => {
     }
 
     if (mode === 'edit') {
-      return (
+      modeButtons = (
         <div className="flex flex-col sm:flex-row justify-between pt-4 sm:pt-6 border-t border-gray-200 dark:border-gray-600">
           <button
             type="button"
@@ -429,7 +424,6 @@ const Academics = () => {
         </div>
       );
     }
-  };
 
   const renderQuestionEditor = (question, index) => {
     if (mode === 'view') {
@@ -850,7 +844,7 @@ const Academics = () => {
               </div>
 
               {/* Action Buttons */}
-              {renderModeButtons()}
+              {modeButtons}
             </div>
           </div>
         </div>

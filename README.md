@@ -1,5 +1,11 @@
 # React + Vite
 
+## Frontend verification
+
+Use Node **22.23.3** (`nvm use`) and `npm ci` for the locked installation.
+See [Testing](docs/testing.md) for React behavior/browser commands, isolation,
+CI gates, baseline lint blockers, and RELEASE-02 verification evidence.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

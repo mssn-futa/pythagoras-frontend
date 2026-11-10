@@ -32,6 +32,8 @@ export default function NavBar({ toggleSidebar, darkMode, handleThemeToggle }) {
 
         {/* Theme Toggle */}
         <button
+          aria-label="Dark mode"
+          aria-pressed={darkMode}
           className="p-2 rounded-xl bg-gray-100 dark:bg-gray-700 
                      hover:bg-linear-to-r hover:from-[#2A742F] hover:to-[#04AF43]
                      hover:text-white transform transition-all duration-300 ease-in-out

@@ -17,7 +17,7 @@ const CreateProfile = () => {
   const [receiptFile, setReceiptFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [passwordStrength, setPasswordStrength] = useState("");
+  const [, setPasswordStrength] = useState("");
 
   const getPasswordStrength = (password) => {
     if (!password) return "";

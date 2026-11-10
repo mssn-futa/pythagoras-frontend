@@ -40,14 +40,13 @@ const HijriCalendar = () => {
     if (!calendarData.length) return [];
 
     const firstDayOfMonth = new Date(calendarData[0].gregorian.date).getDay();
-    const daysInMonth = calendarData.length;
     const calendarDays = [];
 
     for (let i = 0; i < firstDayOfMonth; i++) {
       calendarDays.push({ day: null });
     }
 
-    calendarData.forEach((dateInfo, index) => {
+    calendarData.forEach((dateInfo) => {
       const hijriDay = parseInt(dateInfo.hijri.day);
       const isToday = currentHijriDate && hijriDay === parseInt(currentHijriDate.day);
       

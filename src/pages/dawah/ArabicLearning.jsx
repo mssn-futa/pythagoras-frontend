@@ -2,10 +2,6 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faLanguage,
   faClipboardCheck,
-  faBook,
-  faTrophy,
-  faMicrophone,
-  faUsers,
 } from "@fortawesome/free-solid-svg-icons";
 
 const ArabicLearning = () => {

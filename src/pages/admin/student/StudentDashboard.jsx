@@ -2,7 +2,7 @@ import React from "react";
 import Active from "../../../assets/Active.png";
 import Cap from "../../../assets/Cap.png";
 import faculty from "../../../assets/faculty.png";
-import inactive from "../../../assets/inactive.png";
+import inactive from "../../../assets/Inactive.png";
 import male from "../../../assets/male.png";
 import female from "../../../assets/female.png";
 import { Search, Filter, Download } from "lucide-react";
