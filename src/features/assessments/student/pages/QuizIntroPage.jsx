@@ -15,20 +15,49 @@ export default function QuizIntroPage() {
   const [startError, setStartError] = useState(null);
 
   if (loading) return <Page><Loading label="Loading quiz…" /></Page>;
-  if (error) return <Page><ErrorPanel error={error} onRetry={error.status === 404 || error.status === 403 ? undefined : reload} title="We couldn't load this quiz" /></Page>;
 
   const start = async () => {
     setStarting(true);
     setStartError(null);
     try {
-      // Starting twice (or retrying after a lost response) returns the same attempt.
-      const attempt = await startAttempt(quiz.id);
+      // Starting twice (or retrying after a lost response) returns the same attempt,
+      // even when the quiz has since closed. Only a NEW attempt can be refused.
+      const attempt = await startAttempt(quiz?.id ?? id);
       navigate(`/dawah/attempts/${attempt.id}`);
     } catch (caught) {
       setStartError(caught);
       setStarting(false);
     }
   };
+
+  if (error) {
+    const hidden = error.status === 404 || error.status === 403;
+    return (
+      <Page>
+        <ErrorPanel error={error} onRetry={hidden ? undefined : reload} title="We couldn't load this quiz" />
+        {hidden && (
+          <section className={cardClass}>
+            <p className="text-sm text-[#4B5563] dark:text-gray-300">
+              If you already started this quiz, you can still continue your attempt or see its outcome.
+            </p>
+            {startError && (
+              <p role="alert" className="mt-3 text-sm text-red-700 dark:text-red-400">
+                {describeAssessmentError(startError)}
+              </p>
+            )}
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button type="button" className={primaryButton} onClick={start} disabled={starting}>
+                {starting ? "Opening…" : "Continue my attempt"}
+              </button>
+              <Link to="/dawah/quizzes" className={secondaryButton}>
+                Back to quizzes
+              </Link>
+            </div>
+          </section>
+        )}
+      </Page>
+    );
+  }
 
   return (
     <Page>

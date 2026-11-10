@@ -4,10 +4,12 @@
  * performance.now(), so changing the device clock cannot extend or shorten
  * the attempt. A reload fetches a fresh server_time, so it never resets time.
  */
-export function createServerClock(serverTime, expiresAt, monotonic = () => performance.now()) {
-  const serverStart = Date.parse(serverTime);
+export function createServerClock(serverTime, expiresAt, monotonic = () => performance.now(), { anchorAt, rttMs = 0 } = {}) {
+  // server_time was stamped about half a round trip before it arrived, so the
+  // server is already that much further along; anchor at response arrival.
+  const serverStart = Date.parse(serverTime) + rttMs / 2;
   const expiry = Date.parse(expiresAt);
-  const origin = monotonic();
+  const origin = anchorAt ?? monotonic();
   const valid = Number.isFinite(serverStart) && Number.isFinite(expiry);
   return {
     valid,

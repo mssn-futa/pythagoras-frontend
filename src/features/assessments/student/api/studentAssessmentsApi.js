@@ -43,7 +43,8 @@ export function mapAttempt(raw) {
   return {
     id: Number(raw.id),
     quizId: Number(raw.quiz_id),
-    quizTitle: raw.quiz_title ? String(raw.quiz_title) : null, // ASSUMPTION: optional, not in the D3 example
+    quizTitle: raw.quiz_title ? String(raw.quiz_title) : null, // frozen ASSESS-04 contract; tolerated absent
+    submissionId: numberOrNull(raw.submission_id), // null until finalized (frozen contract)
     status: raw.status,
     startedAt: raw.started_at ?? null,
     expiresAt: raw.expires_at ?? null,
@@ -99,11 +100,23 @@ export async function getQuiz(quizId) {
 
 /** Idempotent: D3 returns the existing attempt unchanged on repeated start, so retrying is safe. */
 export async function startAttempt(quizId) {
-  return mapAttempt(await api.post(`/quiz/quizzes/${quizId}/attempts/`, {}));
+  return timedAttempt(() => api.post(`/quiz/quizzes/${quizId}/attempts/`, {}));
 }
 
 export async function getAttempt(attemptId) {
-  return mapAttempt(await api.get(`/quiz/attempts/${attemptId}/`));
+  return timedAttempt(() => api.get(`/quiz/attempts/${attemptId}/`));
+}
+
+/**
+ * Maps an attempt response and records when it arrived (monotonic) and the
+ * measured round trip, so the countdown can anchor at arrival and discount
+ * the response's transit time.
+ */
+async function timedAttempt(request) {
+  const sent = performance.now();
+  const raw = await request();
+  const arrived = performance.now();
+  return { ...mapAttempt(raw), receivedAt: arrived, rttMs: Math.max(0, arrived - sent) };
 }
 
 /** Sends exactly the payload given (the caller retains it for replay). */
@@ -115,22 +128,22 @@ export async function getResult(submissionId) {
   return mapResult(await api.get(`/quiz/submissions/${submissionId}/`));
 }
 
-export async function listHistory({ page = 1, pageSize = 20 } = {}) {
-  return mapPage(await api.get("/quiz/submissions/", { params: { page, page_size: pageSize } }), mapResult);
+/** Frozen contract: history is newest first and supports ?attempt= and ?quiz= filters. */
+export async function listHistory({ page = 1, pageSize = 20, attempt, quiz } = {}) {
+  const params = { page, page_size: pageSize };
+  if (attempt !== undefined) params.attempt = attempt;
+  if (quiz !== undefined) params.quiz = quiz;
+  return mapPage(await api.get("/quiz/submissions/", { params }), mapResult);
 }
 
 /**
- * ASSUMPTION: D3 gives no attempt -> submission pointer, so a submitted attempt's
- * result is found by scanning the student's own history for its attempt_id.
+ * Result of a finalized attempt: one request. With the attempt's submission_id
+ * it is a direct read; otherwise a single filtered history request (?attempt=).
  */
-export async function findResultForAttempt(attemptId, { pageSize = 100, maxPages = 10 } = {}) {
-  for (let page = 1; page <= maxPages; page += 1) {
-    const data = await listHistory({ page, pageSize });
-    const match = data.results.find((row) => row.attemptId === Number(attemptId));
-    if (match) return match;
-    if (!data.next) return null;
-  }
-  return null;
+export async function findResultForAttempt(attemptId, submissionId = null) {
+  if (submissionId) return getResult(submissionId);
+  const data = await listHistory({ attempt: attemptId, pageSize: 5 });
+  return data.results.find((row) => row.attemptId === Number(attemptId)) ?? null;
 }
 
 /** Retryable transport/availability failures: the outcome of a submit may be unknown. */

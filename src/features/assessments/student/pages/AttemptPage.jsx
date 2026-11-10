@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { findResultForAttempt, getAttempt, getQuiz } from "../api/studentAssessmentsApi.js";
 import QuizTaker from "../components/QuizTaker.jsx";
@@ -26,8 +26,8 @@ function ExpiredPanel() {
   );
 }
 
-function SavedResult({ attemptId }) {
-  const { loading, data, error, reload } = useLoad(() => findResultForAttempt(attemptId), attemptId);
+function SavedResult({ attemptId, submissionId }) {
+  const { loading, data, error, reload } = useLoad(() => findResultForAttempt(attemptId, submissionId), attemptId);
   if (loading) return <Loading label="Loading your saved result…" />;
   if (error) return <ErrorPanel error={error} onRetry={reload} title="We couldn't load your result" />;
   if (!data) {
@@ -43,15 +43,28 @@ function SavedResult({ attemptId }) {
 function InProgress({ attempt }) {
   const navigate = useNavigate();
   const [expired, setExpired] = useState(false);
+  const [settled, setSettled] = useState(null); // fresh server copy that is no longer in progress
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   // The title is cosmetic: failing to fetch it never blocks the attempt.
-  const quiz = useLoad(() => getQuiz(attempt.quizId).catch(() => null), attempt.quizId);
-  if (expired) return <ExpiredPanel />;
+  const quiz = useLoad(() => (attempt.quizTitle ? Promise.resolve(null) : getQuiz(attempt.quizId).catch(() => null)), attempt.quizId);
+  if (expired || (settled && settled.status !== "submitted")) return <ExpiredPanel />;
+  if (settled) return <SavedResult attemptId={settled.id} submissionId={settled.submissionId} />;
   return (
     <QuizTaker
       attempt={attempt}
       quizTitle={attempt.quizTitle ?? quiz.data?.title ?? "Quiz"}
-      onSubmitted={(result) => navigate(`/profile/results/${result.id}`, { replace: true })}
-      onExpired={() => setExpired(true)}
+      // A submit that resolves after the student navigated away must not yank them back.
+      onSubmitted={(result) => {
+        if (mounted.current) navigate(`/profile/results/${result.id}`, { replace: true });
+      }}
+      onExpired={() => mounted.current && setExpired(true)}
+      onAttemptChanged={(fresh) => mounted.current && setSettled(fresh)}
     />
   );
 }
@@ -64,7 +77,7 @@ export default function AttemptPage() {
   let body;
   if (loading) body = <Loading label="Loading your attempt…" />;
   else if (error) body = <ErrorPanel error={error} onRetry={error.status === 404 || error.status === 403 ? undefined : reload} title="We couldn't load this attempt" />;
-  else if (attempt.status === "submitted") body = <SavedResult attemptId={attempt.id} />;
+  else if (attempt.status === "submitted") body = <SavedResult attemptId={attempt.id} submissionId={attempt.submissionId} />;
   else if (attempt.status === "expired" || !(Date.parse(attempt.expiresAt) > Date.parse(attempt.serverTime))) body = <ExpiredPanel />;
   else if (attempt.status === "in_progress") body = <InProgress attempt={attempt} />;
   else
