@@ -1,7 +1,11 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faMoon, faBars, faBell } from "@fortawesome/free-solid-svg-icons";
+import { useAuth } from "../../features/auth/AuthContext.js";
 
 export default function NavBar({ toggleSidebar, darkMode, handleThemeToggle }) {
+  const { user } = useAuth();
+  const name = [user?.first_name, user?.last_name].filter(Boolean).join(" ");
+
   return (
     <nav className="w-full flex items-center justify-between px-4 md:px-6 py-4 
                     bg-white dark:bg-[#000000] shadow-sm transition-colors">
@@ -9,7 +13,7 @@ export default function NavBar({ toggleSidebar, darkMode, handleThemeToggle }) {
       <div className="flex flex-col min-w-0 flex-1 mr-4">
         <p className="font-poppins font-semibold text-gray-800 dark:text-white 
                       text-lg sm:text-[12px] md:text-2xl lg:text-3xl truncate flex flex-wrap gap-2.5">
-          Assalamu Alaykum<span>Salami Abdullah,</span>
+          Assalamu Alaykum{name && <span>{name},</span>}
         </p>
 
         
@@ -49,6 +53,7 @@ export default function NavBar({ toggleSidebar, darkMode, handleThemeToggle }) {
 
         {/* Sidebar Toggle (mobile) */}
         <button
+          aria-label="Open menu"
           className="p-2 rounded-md md:hidden 
                      hover:bg-gray-200 dark:hover:bg-gray-700 transition transform hover:scale-105 duration-300"
           onClick={toggleSidebar}

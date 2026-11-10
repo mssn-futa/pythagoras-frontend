@@ -4,13 +4,15 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, expect, it, vi } from 'vitest'
 import Layout from '../../src/components/layout/Layout.jsx'
+import AuthProvider from '../../src/features/auth/AuthProvider.jsx'
 
 vi.mock('../../src/components/layout/SideBar.jsx', () => ({ default: () => null }))
 
 afterEach(() => document.documentElement.classList.remove('dark'))
 
 function renderLayout() {
-  return render(<StrictMode><MemoryRouter><Layout /></MemoryRouter></StrictMode>)
+  // Layout's navigation reads the session; no stored session means no request.
+  return render(<StrictMode><MemoryRouter><AuthProvider><Layout /></AuthProvider></MemoryRouter></StrictMode>)
 }
 
 it('restores the saved theme and persists each toggle under Strict Mode', async () => {

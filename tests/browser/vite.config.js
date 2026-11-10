@@ -1,8 +1,10 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
-  plugins: [react()],
+  // Tailwind matches the production build so responsive layouts behave the same.
+  plugins: [react(), tailwindcss()],
   envDir: false,
   publicDir: false,
   server: {

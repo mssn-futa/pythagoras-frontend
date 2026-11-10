@@ -1,37 +1,24 @@
 import React, { useState } from "react";
 import logo from "../../assets/logo.png";
 import { Outlet, Link } from "react-router-dom";
-import {
-  Menu,
-  X,
-  Bell,
-  ChevronDown,
-  BarChart3,
-  Users,
-  MessageSquare,
-  FileText,
-  Video,
-  Calendar,
-  Settings,
-} from "lucide-react";
+import { Menu, X, BarChart3, Users, User, LogOut } from "lucide-react";
+import { useAuth } from "../../features/auth/AuthContext.js";
+import { useSignOut } from "../../features/auth/useSignOut.js";
+
+// Only destinations that are mounted. Domain packages' pages join through
+// PLAT-07's navigation composition, not by editing this list concurrently.
+const menuItems = [
+  { icon: BarChart3, label: "Dashboard", path: "/admin" },
+  { icon: Users, label: "Students", path: "/admin/students" },
+  { icon: User, label: "My profile", path: "/profile" },
+];
 
 const AdminLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  const menuItems = [
-    { icon: BarChart3, label: "Dashboard", path: "/admin" },
-    { icon: Users, label: "Students", path: "/admin/students" },
-    {
-      icon: MessageSquare,
-      label: "Communication",
-      path: "/admin/communication",
-    },
-    { icon: FileText, label: "Content", path: "/admin/content" },
-    { icon: Video, label: "Quizzes", path: "/admin/quizzes" },
-    { icon: Users, label: "Users", path: "/admin/users" },
-    { icon: Calendar, label: "Co-Admins", path: "/admin/co-admins" },
-    { icon: Settings, label: "Settings", path: "/admin/settings" },
-  ];
+  const { user } = useAuth();
+  const { signOut, signingOut } = useSignOut();
+  const fullName = [user?.first_name, user?.last_name].filter(Boolean).join(" ") || user?.email;
+  const initial = (user?.first_name || user?.email || "A").charAt(0).toUpperCase();
 
   return (
     <section className="min-h-screen bg-gray-50">
@@ -57,8 +44,8 @@ const AdminLayout = () => {
         </section>
 
         <section className="flex items-center gap-3">
-          <span className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold">
-            A
+          <span className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold" aria-hidden="true">
+            {initial}
           </span>
         </section>
       </header>
@@ -90,6 +77,15 @@ const AdminLayout = () => {
               <span className="font-medium">{item.label}</span>
             </Link>
           ))}
+          <button
+            type="button"
+            onClick={signOut}
+            disabled={signingOut}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-emerald-50 text-gray-700 hover:text-emerald-600 transition-colors disabled:opacity-70"
+          >
+            <LogOut size={20} />
+            <span className="font-medium">{signingOut ? "Signing out..." : "Sign out"}</span>
+          </button>
         </nav>
       </aside>
 
@@ -105,12 +101,11 @@ const AdminLayout = () => {
         <header className="hidden lg:flex bg-white border-b border-gray-200 px-8 py-4 items-center justify-end sticky top-0 z-20">
           <section className="flex items-center gap-4">
 
-            <section className="flex items-center gap-2 cursor-pointer hover:bg-gray-100 rounded-lg px-3 py-2">
-              <span className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold">
-                A
+            <section className="flex items-center gap-2 rounded-lg px-3 py-2">
+              <span className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold" aria-hidden="true">
+                {initial}
               </span>
-              <span className="font-medium text-gray-700">Admin User</span>
-              <ChevronDown size={16} className="text-gray-500" />
+              <span className="font-medium text-gray-700">{fullName}</span>
             </section>
           </section>
         </header>
