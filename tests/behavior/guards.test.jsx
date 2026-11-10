@@ -231,6 +231,13 @@ describe('domain route slots', () => {
       import('../../src/features/assessments/studentRoutes.jsx'),
       import('../../src/features/communication/routes.jsx'),
     ])
-    for (const module of modules) expect(module.default).toEqual([])
+    // DAWAH-04 mounts the public Da'wah routes; the remaining slots ship empty.
+    const [, dawahStudent, ...rest] = modules
+    expect(dawahStudent.default.map((route) => [route.path, route.public])).toEqual([
+      ['dawah', true],
+      ['dawah/events/:id', true],
+      ['dawah/content/:id', true],
+    ])
+    for (const module of [modules[0], ...rest]) expect(module.default).toEqual([])
   })
 })
