@@ -21,6 +21,9 @@ export default defineConfig({
     command: 'npm run test:browser:serve',
     url: 'http://127.0.0.1:4179/tests/browser/index.html',
     reuseExistingServer: false,
+    // Synthetic API origin: every API call is a cross-origin request that a
+    // spec must fulfill with page.route; nothing reaches a real backend.
+    env: { VITE_API_URL: 'https://api.pythagoras.test' },
     timeout: 30_000,
   },
 })
