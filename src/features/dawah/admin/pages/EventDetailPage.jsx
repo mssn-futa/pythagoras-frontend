@@ -104,7 +104,10 @@ function EventDetail({ eventId }) {
       <Card aria-label="Event resources">
         <div className="flex items-center justify-between gap-2 mb-2">
           <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Resources</h2>
-          <Link to={`/admin/events/${eventId}/resources/new`} className={secondaryButton}>Add audio</Link>
+          <div className="flex flex-wrap gap-2">
+            <Link to={`/admin/events/${eventId}/resources/new`} className={secondaryButton}>Add audio</Link>
+            <Link to={`/admin/events/${eventId}/resources/new?type=vid`} className={secondaryButton}>Add video link</Link>
+          </div>
         </div>
         {resourcesState.loading && !resourcesState.data ? (
           <Loading label="Loading resources…" />

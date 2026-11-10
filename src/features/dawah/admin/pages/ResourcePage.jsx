@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import AudioUploadPanel from "../components/AudioUploadPanel.jsx";
+import VideoLinkPanel from "../components/VideoLinkPanel.jsx";
 import {
   Alert, Badge, Breadcrumbs, Card, ConfirmAction, ErrorState, Field, Loading, PageHeader, StatusBadge, primaryButton,
 } from "../components/ui.jsx";
@@ -86,6 +87,7 @@ function ResourceDetail({ eventId, resourceId }) {
 
   const published = resource.status === "published";
   const isAudio = resource.type === "aud";
+  const isVideo = resource.type === "vid";
   const previewSrc = resource.previewUrl ?? resource.mediaUrl;
 
   return (
@@ -119,6 +121,8 @@ function ResourceDetail({ eventId, resourceId }) {
 
       {isAudio ? (
         <AudioUploadPanel resource={resource} upload={upload} />
+      ) : isVideo ? (
+        <VideoLinkPanel key={resource.id} eventId={eventId} resource={resource} onSaved={resourceState.reload} />
       ) : (
         <Card>
           <p className="text-sm text-gray-600 dark:text-gray-400">This {RESOURCE_TYPES[resource.type] ?? "resource"} is managed in a later release. Only its state can be changed here.</p>
@@ -144,7 +148,9 @@ function ResourceDetail({ eventId, resourceId }) {
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
           {published
             ? "Visible to readers while its event is published. Unpublish to hide it, replace its audio or delete it."
-            : "Publishing needs ready audio and a published event. The server checks both."}
+            : isVideo
+              ? "Publishing needs a saved YouTube link and a published event. The server checks both. This does not publish anything on YouTube."
+              : "Publishing needs ready audio and a published event. The server checks both."}
         </p>
         {event && event.status !== "published" && !published && (
           <p className="mt-2 text-sm text-amber-800 dark:text-amber-300">The event is {event.status}. Publish the event before publishing this resource.</p>
@@ -171,7 +177,7 @@ function ResourceDetail({ eventId, resourceId }) {
             <ConfirmAction
               label="Delete resource"
               confirmLabel="Delete resource"
-              prompt="Delete this resource and its uploaded audio?"
+              prompt={isVideo ? "Delete this video resource? The video on YouTube is not affected." : "Delete this resource and its uploaded audio?"}
               tone="danger"
               busy={busy}
               disabled={uploading}

@@ -223,8 +223,35 @@ export async function createAudioResource(eventId, { title }) {
   return mapResource(await api.post(resourcesUrl(eventId), { title: title.trim(), type: "aud" }));
 }
 
-export async function updateResource(eventId, id, { title }) {
-  return mapResource(await api.patch(resourceUrl(eventId, id), { title: title.trim() }));
+/** PATCH only the fields supplied. `youtubeUrl` is sent verbatim (trimmed); the server validates and normalizes it. */
+export async function updateResource(eventId, id, { title, youtubeUrl }) {
+  const body = {};
+  if (title !== undefined) body.title = title.trim();
+  if (youtubeUrl !== undefined) body.youtube_url = youtubeUrl.trim();
+  return mapResource(await api.patch(resourceUrl(eventId, id), body));
+}
+
+/** D2: `{"title","type":"vid","youtube_url"}`. The response carries `playback` synchronously (no upload/job). */
+export async function createVideoResource(eventId, { title, youtubeUrl }) {
+  return mapResource(await api.post(resourcesUrl(eventId), { title: title.trim(), type: "vid", youtube_url: youtubeUrl.trim() }));
+}
+
+/** Same lost-response protection as the audio draft: a recovered draft video is returned instead of a duplicate. */
+export async function createVideoResourceSafely(eventId, values) {
+  try {
+    return await createVideoResource(eventId, values);
+  } catch (error) {
+    if (!isTransportFailure(error)) throw error;
+    let found;
+    try {
+      const all = await listAllResources(eventId);
+      found = all.results.find((item) => item.type === "vid" && item.status === "draft" && item.title === values.title.trim()) ?? null;
+    } catch {
+      throw unconfirmed("draft");
+    }
+    if (found) return found;
+    throw error;
+  }
 }
 
 export const deleteResource = (eventId, id) => api.delete(resourceUrl(eventId, id));

@@ -236,10 +236,10 @@ describe('event and content detail', () => {
     expect(container.querySelector('audio')).toBeNull()
   })
 
-  test('content detail with a video resource is not rendered as audio', async () => {
+  test('content detail with a video resource lacking playback metadata is unavailable, not audio', async () => {
     serve({ '/dawah/resources/:id/': () => ok(audio(8, { type: 'vid', media_url: '' })) })
     const { container } = render(<TestApp path="/dawah/content/8" />)
-    expect(await screen.findByText(/not available to play here yet/)).toBeInTheDocument()
+    expect(await screen.findByText('This video is not available right now.')).toBeInTheDocument()
     expect(container.querySelector('audio')).toBeNull()
   })
 })

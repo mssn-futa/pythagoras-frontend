@@ -12,7 +12,7 @@ export default function EventDetailPage() {
   const { loading, data, error, reload } = useRemote(
     async () => {
       const event = await getEvent(id)
-      return { event, resources: event.resources.filter((resource) => resource.type === 'aud') }
+      return { event, resources: event.resources.filter((resource) => resource.type === 'aud' || resource.type === 'vid') }
     },
     `event-${id}`,
   )
