@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http } from 'msw'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
@@ -31,6 +31,7 @@ function serveStudents(all, queries = []) {
       const page = Number(q.get('page') ?? 1)
       let rows = all
       if (q.get('search')) rows = rows.filter((r) => `${r.first_name} ${r.matric_number}`.toLowerCase().includes(q.get('search').toLowerCase()))
+      if (q.get('department')) rows = rows.filter((r) => (r.department ?? '').toLowerCase() === q.get('department').trim().toLowerCase())
       if (q.get('level')) rows = rows.filter((r) => r.level === q.get('level'))
       if (q.get('is_active')) rows = rows.filter((r) => String(r.is_active) === q.get('is_active'))
       return ok({ count: rows.length, next: null, previous: null, results: rows.slice((page - 1) * size, page * size) })
@@ -71,7 +72,7 @@ describe('student list', () => {
     expect(location()).toBe('/admin/students?level=300')
 
     await user.selectOptions(screen.getByLabelText('Status'), 'true')
-    await user.type(screen.getByLabelText('Department'), 'Law')
+    await user.type(screen.getByLabelText('Department (exact match)'), 'Law')
     await waitFor(() => expect(location()).toBe('/admin/students?department=Law&level=300&is_active=true'))
     expect(queries.at(-1)).toMatchObject({ department: 'Law', level: '300', is_active: 'true', page_size: '20' })
 
@@ -133,13 +134,16 @@ describe('student list', () => {
 
 describe('student detail', () => {
   function serveDetail(record, patch) {
-    const rec = serveStudents([record])
+    const all = [record]
+    const rec = serveStudents(all)
     server.use(
       http.get(url(`/accounts/students/${record.id}/`), () => ok(record)),
       http.patch(url(`/accounts/students/${record.id}/`), async ({ request }) => {
         const body = await request.json()
         rec.calls.push({ patch: body })
-        return patch(body, record)
+        const response = patch(body, record)
+        if (response.status === 200) all[0] = { ...record, ...body } // persisted: later list fetches see it
+        return response
       }),
     )
     return rec
@@ -208,13 +212,16 @@ describe('student detail', () => {
 
 describe('activate / deactivate', () => {
   function setup(patch) {
-    const rec = serveStudents([row(1)])
+    const all = [row(1)]
+    const rec = serveStudents(all)
     server.use(
       http.get(url('/accounts/students/1/'), () => ok(row(1))),
       http.patch(url('/accounts/students/1/'), async ({ request }) => {
         const body = await request.json()
         rec.calls.push({ patch: body })
-        return patch(body)
+        const response = patch(body)
+        if (response.status === 200) all[0] = { ...all[0], ...body }
+        return response
       }),
     )
     return rec
@@ -244,7 +251,7 @@ describe('activate / deactivate', () => {
   })
 
   test.each([
-    [409, 'LAST_ADMIN', 'You cannot deactivate the last active administrator.'],
+    [409, 'CONFLICT', 'This change conflicts with the current account state.'],
     [403, 'PERMISSION_DENIED', 'You do not have permission to perform this action.'],
   ])('a %i failure is shown and the status is unchanged', async (status, code, message) => {
     setup(() => fail(status, code, message))
@@ -255,5 +262,116 @@ describe('activate / deactivate', () => {
     expect(await within(screen.getByRole('alertdialog')).findByRole('alert')).toHaveTextContent(message)
     expect(within(screen.getByRole('table')).getByText('Active')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Confirm deactivate' })).toBeEnabled()
+  })
+})
+
+describe('drawer robustness', () => {
+  test('a save that finishes after switching students does not corrupt the new drawer, and refreshes the list', async () => {
+    const queries = []
+    serveStudents([row(1), row(2)], queries)
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    server.use(
+      http.get(url('/accounts/students/1/'), () => ok(row(1))),
+      http.get(url('/accounts/students/2/'), () => ok(row(2))),
+      http.patch(url('/accounts/students/1/'), async ({ request }) => {
+        const body = await request.json()
+        await gate
+        return ok({ ...row(1), ...body })
+      }),
+    )
+    const user = userEvent.setup()
+    render(<TestApp path="/admin/students?student=1" />)
+    const dept = await screen.findByLabelText('Department')
+    await user.clear(dept)
+    await user.type(dept, 'Law')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+    const listCalls = () => queries.length
+    const before = listCalls()
+    // Switch to student 2 while the PATCH is in flight.
+    await user.click(await screen.findByRole('button', { name: 'Close' }))
+    await user.click(screen.getByRole('button', { name: 'View profile of First2 Last2' }))
+    expect(await screen.findByRole('heading', { name: 'First2 Last2' })).toBeVisible()
+    await act(async () => { release() })
+    await waitFor(() => expect(listCalls()).toBeGreaterThan(before))
+    expect(screen.getByRole('heading', { name: 'First2 Last2' })).toBeVisible()
+    expect(screen.getByLabelText('Email')).toHaveValue('s2@example.test')
+    expect(screen.queryByText('Changes saved.')).not.toBeInTheDocument()
+  })
+
+  test('traps Tab inside the dialog, and restores focus to the opener on close', async () => {
+    serveStudents([row(1)])
+    server.use(http.get(url('/accounts/students/1/'), () => ok(row(1))))
+    const user = userEvent.setup()
+    render(<TestApp path="/admin/students" />)
+    const opener = await screen.findByRole('button', { name: 'View profile of First1 Last1' })
+    opener.focus()
+    await user.click(opener)
+    const dialog = await screen.findByRole('dialog')
+    await within(dialog).findByLabelText('Email')
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true))
+    for (let i = 0; i < 14; i += 1) {
+      await user.tab()
+      expect(dialog.contains(document.activeElement)).toBe(true)
+    }
+    for (let i = 0; i < 14; i += 1) {
+      await user.tab({ shift: true })
+      expect(dialog.contains(document.activeElement)).toBe(true)
+    }
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(opener).toHaveFocus()
+  })
+
+  test('focus moves to Confirm, then back to the status button after cancel and after success', async () => {
+    serveStudents([row(1)])
+    server.use(
+      http.get(url('/accounts/students/1/'), () => ok(row(1))),
+      http.patch(url('/accounts/students/1/'), async ({ request }) => ok({ ...row(1), ...(await request.json()) })),
+    )
+    const user = userEvent.setup()
+    render(<TestApp path="/admin/students?student=1" />)
+    await user.click(await screen.findByRole('button', { name: 'Deactivate account' }))
+    expect(screen.getByRole('button', { name: 'Confirm deactivate' })).toHaveFocus()
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.getByRole('button', { name: 'Deactivate account' })).toHaveFocus()
+    await user.click(screen.getByRole('button', { name: 'Deactivate account' }))
+    await user.click(screen.getByRole('button', { name: 'Confirm deactivate' }))
+    expect(await screen.findByRole('button', { name: 'Activate account' })).toHaveFocus()
+  })
+
+  test('a saved change refetches the list so filtered results stay correct', async () => {
+    const queries = []
+    serveStudents([row(1), row(2, { level: '200' })], queries)
+    server.use(
+      http.get(url('/accounts/students/1/'), () => ok(row(1))),
+      http.patch(url('/accounts/students/1/'), async ({ request }) => ok({ ...row(1), ...(await request.json()) })),
+    )
+    const user = userEvent.setup()
+    render(<TestApp path="/admin/students?student=1" />)
+    await screen.findByLabelText('Email')
+    const before = queries.length
+    await user.click(screen.getByRole('button', { name: 'Deactivate account' }))
+    await user.click(screen.getByRole('button', { name: 'Confirm deactivate' }))
+    await waitFor(() => expect(queries.length).toBeGreaterThan(before))
+  })
+})
+
+describe('out-of-range page', () => {
+  test('a 404 on a later page offers a way back to the first page', async () => {
+    const rec = recorder()
+    server.use(
+      ...sessionHandlers(rec, admin),
+      http.get(url('/accounts/students/'), ({ request }) => {
+        const page = new URL(request.url).searchParams.get('page')
+        return page === '9' ? fail(404, 'NOT_FOUND', 'Invalid page.') : ok({ count: 1, next: null, previous: null, results: [row(1)] })
+      }),
+    )
+    const user = userEvent.setup()
+    render(<TestApp path="/admin/students?page=9&level=300" />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid page.')
+    await user.click(screen.getByRole('button', { name: 'Go to first page' }))
+    expect(await screen.findByText('First1 Last1')).toBeVisible()
+    expect(location()).toBe('/admin/students?level=300')
   })
 })

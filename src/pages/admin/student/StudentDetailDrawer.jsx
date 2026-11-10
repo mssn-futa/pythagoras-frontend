@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 import { X } from "lucide-react";
 import { FormAlert, FormNotice, SelectField, SubmitButton, TextField } from "../../../features/auth/components/FormControls.jsx";
 import Spinner from "../../../features/auth/components/Spinner.jsx";
@@ -28,6 +30,61 @@ const StudentDetailDrawer = ({ id, onClose, onUpdated }) => {
   const [toggleError, setToggleError] = useState(null);
   const [reloads, setReloads] = useState(0);
   const headingRef = useRef(null);
+  const dialogRef = useRef(null);
+  const confirmRef = useRef(null);
+  const statusButtonRef = useRef(null);
+  const confirmingBefore = useRef(false);
+  const live = useRef(true);
+
+  // The dashboard remounts this drawer per student (key), so a late result for a
+  // previous student is dropped here: `live` is false once this instance is gone.
+  useEffect(() => {
+    live.current = true;
+    const opener = document.activeElement;
+    return () => {
+      live.current = false;
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
+    };
+  }, []);
+
+  // Focus follows the confirmation: into Confirm when it opens, back to the status button after.
+  useEffect(() => {
+    if (confirming) confirmRef.current?.focus();
+    else if (confirmingBefore.current) statusButtonRef.current?.focus();
+    confirmingBefore.current = confirming;
+  }, [confirming]);
+
+  // Trap Tab inside the dialog and pull stray focus back in (the page behind is inert to keyboard users).
+  useEffect(() => {
+    const focusables = () => [...(dialogRef.current?.querySelectorAll(FOCUSABLE) ?? [])];
+    const onKey = (event) => {
+      if (event.key !== "Tab") return;
+      const items = focusables();
+      if (items.length === 0) {
+        event.preventDefault();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const inside = dialogRef.current?.contains(document.activeElement);
+      if (!inside || (event.shiftKey && document.activeElement === first) || (event.shiftKey && document.activeElement === headingRef.current)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    const onFocusIn = (event) => {
+      if (dialogRef.current && !dialogRef.current.contains(event.target)) (focusables()[0] ?? headingRef.current)?.focus();
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("focusin", onFocusIn);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("focusin", onFocusIn);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,9 +125,10 @@ const StudentDetailDrawer = ({ id, onClose, onUpdated }) => {
     },
   });
 
+  // Server-confirmed records always reach the list; drawer state is only touched while this student is shown.
   const accept = (updated) => {
-    setState({ id, status: "ready", student: updated, error: null });
     onUpdated(updated);
+    if (live.current) setState({ id, status: "ready", student: updated, error: null });
     return updated;
   };
 
@@ -81,12 +139,13 @@ const StudentDetailDrawer = ({ id, onClose, onUpdated }) => {
     setSaved(false);
     try {
       const updated = accept(await updateStudent(id, Object.fromEntries(dirty.map((key) => [key, values[key]]))));
+      if (!live.current) return;
       setValues(toValues(updated));
       setSaved(true);
     } catch (error) {
-      setSaveError(error);
+      if (live.current) setSaveError(error);
     } finally {
-      setSaving(false);
+      if (live.current) setSaving(false);
     }
   };
 
@@ -95,11 +154,11 @@ const StudentDetailDrawer = ({ id, onClose, onUpdated }) => {
     setToggleError(null);
     try {
       accept(await setStudentActive(id, !student.is_active));
-      setConfirming(false);
+      if (live.current) setConfirming(false);
     } catch (error) {
-      setToggleError(error);
+      if (live.current) setToggleError(error);
     } finally {
-      setToggling(false);
+      if (live.current) setToggling(false);
     }
   };
 
@@ -108,7 +167,7 @@ const StudentDetailDrawer = ({ id, onClose, onUpdated }) => {
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <button type="button" aria-label="Close details" tabIndex={-1} onClick={onClose} className="absolute inset-0 bg-black/40" />
-      <aside role="dialog" aria-modal="true" aria-labelledby="student-drawer-title" className="relative w-full max-w-md h-full overflow-y-auto bg-white p-5 shadow-xl">
+      <aside ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="student-drawer-title" className="relative w-full max-w-md h-full overflow-y-auto bg-white p-5 shadow-xl">
         <div className="flex items-start justify-between gap-3">
           <h2 id="student-drawer-title" ref={headingRef} tabIndex={-1} className="text-xl font-bold text-gray-900 break-words focus:outline-none">
             {title}
@@ -159,6 +218,7 @@ const StudentDetailDrawer = ({ id, onClose, onUpdated }) => {
             <section className="border-t border-gray-200 pt-4 space-y-3" aria-label="Account status">
               {!confirming && (
                 <button
+                  ref={statusButtonRef}
                   type="button"
                   onClick={() => { setToggleError(null); setConfirming(true); }}
                   className={`w-full rounded-lg px-4 py-3 text-sm font-medium border ${student.is_active ? "border-red-300 text-red-700 hover:bg-red-50" : "border-green-300 text-green-700 hover:bg-green-50"}`}
@@ -175,7 +235,7 @@ const StudentDetailDrawer = ({ id, onClose, onUpdated }) => {
                   </p>
                   <FormAlert>{toggleError?.message}</FormAlert>
                   <div className="flex gap-2">
-                    <button type="button" disabled={toggling} onClick={handleToggle} className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-70 ${student.is_active ? "bg-red-600" : "bg-[#2A742F]"}`}>
+                    <button ref={confirmRef} type="button" disabled={toggling} onClick={handleToggle} className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-70 ${student.is_active ? "bg-red-600" : "bg-[#2A742F]"}`}>
                       {toggling ? "Working..." : student.is_active ? "Confirm deactivate" : "Confirm activate"}
                     </button>
                     <button type="button" disabled={toggling} onClick={() => { setConfirming(false); setToggleError(null); }} className="flex-1 rounded-lg border border-[#E5E7EB] px-4 py-2 text-sm">

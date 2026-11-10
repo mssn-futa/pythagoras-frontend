@@ -63,6 +63,7 @@ const StudentDashboard = () => {
         ? { ...current, data: { ...current.data, results: current.data.results.map((row) => (row.id === updated.id ? { ...row, ...updated } : row)) } }
         : current,
     );
+    setReloads((n) => n + 1); // refetch so filters and ordering reflect the saved change
   }, []);
 
   const closeDetail = useCallback(() => go({ student: "" }), [go]);
@@ -91,9 +92,15 @@ const StudentDashboard = () => {
         {status === "error" && (
           <div className="space-y-3 py-6">
             <FormAlert>{error.message || "Students could not be loaded."}</FormAlert>
-            <button type="button" onClick={() => setReloads((n) => n + 1)} className="rounded-lg border border-[#E5E7EB] px-4 py-2 text-sm">
-              Try again
-            </button>
+            {error.status === 404 && page > 1 ? (
+              <button type="button" onClick={() => go({ page: 1 }, { replace: true })} className="rounded-lg border border-[#E5E7EB] px-4 py-2 text-sm">
+                Go to first page
+              </button>
+            ) : (
+              <button type="button" onClick={() => setReloads((n) => n + 1)} className="rounded-lg border border-[#E5E7EB] px-4 py-2 text-sm">
+                Try again
+              </button>
+            )}
           </div>
         )}
 
@@ -111,7 +118,7 @@ const StudentDashboard = () => {
         )}
       </section>
 
-      {student && <StudentDetailDrawer id={student} onClose={closeDetail} onUpdated={handleUpdated} />}
+      {student && <StudentDetailDrawer key={student} id={student} onClose={closeDetail} onUpdated={handleUpdated} />}
     </section>
   );
 };

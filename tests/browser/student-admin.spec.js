@@ -39,7 +39,7 @@ async function mockApi(page, origin) {
     if (detail) {
       const record = students.find((s) => s.id === Number(detail[1]))
       if (request.method() === 'GET') return reply(route, 200, record)
-      if (body.is_active === false) return reply(route, 409, { code: 'LAST_ADMIN' }, 'This change is not allowed right now.')
+      if (body.is_active === false) return reply(route, 409, { code: 'CONFLICT' }, 'This change is not allowed right now.')
       if (body.email) return reply(route, 400, { code: 'VALIDATION_ERROR', fields: { email: ['A student with this email already exists.'] } }, 'Invalid input.')
       return reply(route, 200, { ...record, ...body })
     }
