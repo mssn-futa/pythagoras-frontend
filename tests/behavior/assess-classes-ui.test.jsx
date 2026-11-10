@@ -96,6 +96,7 @@ describe('class create and edit', () => {
     await user.click(screen.getByRole('button', { name: 'Save draft class' }))
     expect(await screen.findByText('Draft class saved. You can now add modules.')).toBeVisible()
     expect(location()).toBe('/admin/classes/500')
+    expect(await screen.findByRole('button', { name: 'Publish class' })).toBeVisible() // saved class fully loaded
     expect(backend.callsTo('POST', '/quiz/classes/')[0].body).toEqual({ code: 'ARB102', title: 'Intermediate Arabic', description: 'Reading practice' })
     expect(backend.state.classes[0]).toMatchObject({ kind: 'arabic', status: 'draft' })
   })
@@ -210,6 +211,7 @@ describe('lifecycle', () => {
     await user.click(await screen.findByRole('button', { name: 'Delete draft class' }))
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete draft class' }))
     expect(await screen.findByText('Draft class deleted.')).toBeVisible()
+    expect(await screen.findByText(/No Arabic classes yet/)).toBeVisible() // list loaded: nothing left in flight
     expect(location()).toBe('/admin/classes')
     expect(backend.state.classes).toEqual([])
   })
@@ -302,6 +304,7 @@ describe('modules', () => {
     await user.click(screen.getByRole('button', { name: 'Save draft module' }))
     await waitFor(() => expect(location()).toBe('/admin/classes/2/modules/500'))
     expect(await screen.findByText('Module saved as a draft.')).toBeVisible()
+    expect(await screen.findByRole('button', { name: 'Save module' })).toBeVisible() // saved module fully loaded: no request left in flight
     expect(backend.callsTo('POST', '/quiz/classes/2/modules/')[0].body).toEqual({ title: 'Arabic greetings', body: 'Lesson text', order: 4, resource_ids: [8, 19] })
   })
 
@@ -322,6 +325,7 @@ describe('modules', () => {
     await user.click(screen.getByRole('button', { name: 'Save draft module' }))
     await waitFor(() => expect(backend.callsTo('POST', '/quiz/classes/2/modules/')).toHaveLength(1))
     expect(backend.callsTo('POST', '/quiz/classes/2/modules/')[0].body.resource_ids).toEqual([])
+    expect(await screen.findByRole('button', { name: 'Save module' })).toBeVisible() // saved module fully loaded
   })
 
   test('a server rejection of resource_ids (backend publication check) is shown on the resources and the draft is kept', async () => {
