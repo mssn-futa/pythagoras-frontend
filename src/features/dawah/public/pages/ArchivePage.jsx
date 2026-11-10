@@ -10,7 +10,7 @@ import { formatDateTime } from '../lib/format.js'
 import { useRemote } from '../lib/useRemote.js'
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
-const EMPTY = { search: '', speaker: '', category: '', dateFrom: '', dateTo: '' }
+const EMPTY = { search: '', speaker: '', category: '', dateFrom: '', dateTo: '', type: 'aud' }
 
 /** URL query is the filter state, so reload/back/deep links keep it. */
 function readFilters(params) {
@@ -22,12 +22,13 @@ function readFilters(params) {
     category: (params.get('category') ?? '').trim(),
     dateFrom: date('from'),
     dateTo: date('to'),
+    type: params.get('type') === 'vid' ? 'vid' : 'aud',
     page: Number.isInteger(page) && page > 0 ? page : 1,
   }
 }
 
-function toParams({ search, speaker, category, dateFrom, dateTo, page }) {
-  const entries = { q: search, speaker, category, from: dateFrom, to: dateTo, page: page > 1 ? String(page) : '' }
+function toParams({ search, speaker, category, dateFrom, dateTo, type, page }) {
+  const entries = { q: search, speaker, category, from: dateFrom, to: dateTo, type: type === 'vid' ? 'vid' : '', page: page > 1 ? String(page) : '' }
   return Object.fromEntries(Object.entries(entries).filter(([, value]) => value))
 }
 
@@ -68,7 +69,7 @@ export default function ArchivePage() {
     if (pageOutOfRange) setParams(toParams({ ...filters, page: 1 }), { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageOutOfRange])
-  const filtered = Boolean(filters.search || filters.speaker || filters.category || filters.dateFrom || filters.dateTo)
+  const filtered = Boolean(filters.search || filters.speaker || filters.category || filters.dateFrom || filters.dateTo || filters.type !== 'aud')
 
   const apply = (next) => setParams(toParams({ ...next, page: 1 }))
   const goToPage = (page) => {
@@ -80,7 +81,7 @@ export default function ArchivePage() {
     <div className="mx-auto max-w-5xl space-y-6 pt-20">
       <header>
         <h1 className="text-2xl font-bold text-[#1F2937] dark:text-white">Da’wah archive</h1>
-        <p className="text-sm text-[#6B7280] dark:text-gray-300">Published khutbahs and lectures. Anyone can listen.</p>
+        <p className="text-sm text-[#6B7280] dark:text-gray-300">Published khutbahs and lectures. Anyone can listen or watch.</p>
       </header>
 
       <UpcomingEvents />

@@ -60,8 +60,13 @@ export default function ContentPage() {
     <section className="max-w-6xl mx-auto space-y-6">
       <PageHeader
         title="Content"
-        subtitle="Audio resources attached to events."
-        actions={eventId && <Link to={`/admin/events/${eventId}/resources/new`} className={primaryButton}>Add audio</Link>}
+        subtitle="Audio and video resources attached to events."
+        actions={eventId && (
+          <>
+            <Link to={`/admin/events/${eventId}/resources/new`} className={primaryButton}>Add audio</Link>
+            <Link to={`/admin/events/${eventId}/resources/new?type=vid`} className={secondaryButton}>Add video link</Link>
+          </>
+        )}
       />
       <Card>
         {eventsState.error ? (

@@ -1,4 +1,5 @@
 import { api } from '../../../../services/api'
+import { safePlayback } from '../lib/youtube.js'
 
 /**
  * Public (anonymous) Da'wah reads, D2 "Backend Design" / "API Contracts".
@@ -45,6 +46,8 @@ export function mapResource(raw = {}) {
     storageStatus: raw.storage_status ?? null,
     mediaUrl: text(raw.media_url),
     duration: Number.isFinite(raw.duration) ? raw.duration : null,
+    // Raw server playback metadata; VideoEmbed validates it before use (never trusted here).
+    playback: raw.playback && typeof raw.playback === 'object' ? raw.playback : null,
     event: raw.event ? mapEvent(raw.event) : null,
   }
 }
@@ -74,10 +77,15 @@ function mapPage(data, mapItem) {
 /** Defensive: a visible-only endpoint should never send drafts; drop them if it does. */
 const isPublished = (item) => item.status === null || item.status === 'published'
 
+/** A video is shown only when published and it carries a valid YouTube ID (embed/watch URLs are re-validated at render). */
+export function isPlayableVideo(resource) {
+  return resource?.type === 'vid' && resource.status === 'published' && safePlayback(resource.playback) !== null
+}
+
 /**
  * Archive filters (D2): search, speaker, date_from/date_to (ISO dates, Lagos
  * calendar boundaries applied by the server), category, type=aud|vid|doc,
- * D0 page/page_size. DAWAH-04 only consumes audio, hence the default type.
+ * D0 page/page_size. `type` defaults to audio; DAWAH-06 passes `vid` from the archive type filter.
  */
 export async function listArchive({ search, speaker, dateFrom, dateTo, category, type = 'aud', page = 1, pageSize = PAGE_SIZE } = {}) {
   const data = await publicGet('/dawah/archive/', {
