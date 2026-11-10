@@ -1,4 +1,4 @@
-import { http } from 'msw'
+import { http, HttpResponse } from 'msw'
 import { audio } from './dawah.js'
 import { fail, ok, url } from './auth.js'
 
@@ -6,6 +6,7 @@ import { fail, ok, url } from './auth.js'
 // It records contract violations (unexpected bodies/params) and every module request made
 // without an active enrollment in a published class, so tests can prove gating.
 
+const API_NEXT = 'https://api.pythagoras.test/quiz/next/'
 export const rawClass = (over = {}) => ({
   id: 2, code: 'ARB101', title: 'Arabic for beginners', description: 'Greetings and basics.', kind: 'arabic', status: 'published',
   created_at: '2026-10-01T09:00:00Z', updated_at: '2026-10-01T09:00:00Z', ...over,
@@ -81,22 +82,27 @@ export function createLearningBackend({ classes = [rawClass()], modules = {}, en
       return ok(row(params.id), 'Enrolled.')
     }),
     handle('delete', '/quiz/classes/:id/enrollment/', (call, params) => {
-      if (mine(params.id)) mine(params.id).status = 'withdrawn'
-      return mine(params.id) ? ok(row(params.id), 'Withdrawn.') : fail(404, 'NOT_FOUND', 'No enrollment.')
+      // Idempotent: 200 with the record, or 204 when there is nothing to withdraw.
+      if (!mine(params.id)) return new HttpResponse(null, { status: 204 })
+      mine(params.id).status = 'withdrawn'
+      return ok(row(params.id), 'Withdrawn.')
     }),
     handle('get', '/quiz/classes/:id/modules/', (call, params) => {
       checkPage(call)
       if (!readable(params.id)) {
         state.deniedModuleCalls.push(call.path)
-        return fail(403, 'NOT_ENROLLED', 'Enroll to read modules.')
+        return fail(403, 'ENROLLMENT_REQUIRED', 'Enroll to read modules.')
       }
       const rows = (state.modules[params.id] ?? []).filter((item) => item.status === 'published')
-      return ok({ count: rows.length, next: null, previous: null, results: rows })
+      const size = Number(call.search.page_size ?? 20)
+      const number = Number(call.search.page ?? 1)
+      const more = number * size < rows.length
+      return ok({ count: rows.length, next: more ? `${API_NEXT}?page=${number + 1}` : null, previous: null, results: rows.slice((number - 1) * size, number * size) })
     }),
     handle('get', '/quiz/classes/:id/modules/:mid/', (call, params) => {
       if (!readable(params.id)) {
         state.deniedModuleCalls.push(call.path)
-        return fail(403, 'NOT_ENROLLED', 'Enroll to read modules.')
+        return fail(403, 'ENROLLMENT_REQUIRED', 'Enroll to read modules.')
       }
       const found = (state.modules[params.id] ?? []).find((item) => String(item.id) === String(params.mid) && item.status === 'published')
       return found ? ok(found) : fail(404, 'NOT_FOUND', 'Not found.')

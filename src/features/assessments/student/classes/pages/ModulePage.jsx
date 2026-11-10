@@ -1,6 +1,6 @@
 import { Link, useParams } from "react-router-dom";
 import { ResourceRenderer } from "../../../../dawah/public";
-import { accessState, canReadModules, describeClassError, getClass, getEnrollment, getModule, listModules } from "../api/classesApi.js";
+import { accessState, canReadModules, describeClassError, getClass, getEnrollment, getModule, isEnrollmentRequired, listModules } from "../api/classesApi.js";
 import AccessNotice from "../components/AccessNotice.jsx";
 import { ErrorPanel, Loading, Page } from "../../components/StateBlocks.jsx";
 import { useLoad } from "../../hooks/useLoad.js";
@@ -29,7 +29,13 @@ export default function ModulePage() {
     const hidden = error.status === 404 || error.status === 403;
     return (
       <Page>
-        <ErrorPanel error={{ ...error, message: describeClassError(error) }} onRetry={hidden ? undefined : reload} title="We couldn't load this module" />
+        <ErrorPanel error={error} message={describeClassError(error)} onRetry={hidden ? undefined : reload} title="We couldn't load this module">
+          {isEnrollmentRequired(error) && (
+            <p className="mt-3 text-sm">
+              <Link to={`/dawah/classes/${id}`} className="underline text-[#2A742F] dark:text-green-300">Enroll on the class page</Link>
+            </p>
+          )}
+        </ErrorPanel>
         {back}
       </Page>
     );

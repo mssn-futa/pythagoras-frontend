@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { cardClass, secondaryButton } from "../../lib/ui.js";
 
 const COPY = {
-  not_enrolled: ["You are not enrolled in this class", "Enroll to read its modules and follow the related quizzes."],
+  not_enrolled: ["You are not enrolled in this class", "Enroll to read its modules; linked quizzes are listed in each module."],
   withdrawn: ["You have withdrawn from this class", "Re-enroll to read its modules again. Your earlier quiz results stay available under My results."],
   closed: ["This class is closed", "Closed classes no longer accept enrollment and their modules are not available. Your quiz results stay available under My results."],
   unavailable: ["This class is not available", "It has not been published yet."],

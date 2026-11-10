@@ -12,13 +12,13 @@ export default function ClassCatalogPage() {
   const { loading, data, error, reload } = useLoad(() => listClasses({ page }), `page-${page}`);
 
   if (loading) return <Page><Loading label="Loading classes…" /></Page>;
-  if (error) return <Page><ErrorPanel error={{ ...error, message: describeClassError(error) }} onRetry={reload} title="We couldn't load classes" /></Page>;
+  if (error) return <Page><ErrorPanel error={error} message={describeClassError(error)} onRetry={reload} title="We couldn't load classes" /></Page>;
 
   return (
     <Page>
       <section className={cardClass}>
         <h1 className={headingClass}>Arabic classes</h1>
-        <p className={`${mutedClass} mt-1`}>Enroll in a class to read its modules and take its quizzes.</p>
+        <p className={`${mutedClass} mt-1`}>Enroll in a class to read its modules. Linked quizzes are listed in each module.</p>
       </section>
       {data.results.length === 0 ? (
         <EmptyState title="No classes are open right now">Published Arabic classes will appear here.</EmptyState>

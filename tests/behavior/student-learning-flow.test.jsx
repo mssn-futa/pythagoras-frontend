@@ -1,9 +1,13 @@
-import { configure, render, screen, within } from '@testing-library/react'
+import { configure, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
+import ClassDetailPage from '../../src/features/assessments/student/classes/pages/ClassDetailPage.jsx'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { server } from '../mocks/server.js'
 import { fail, ok, recorder, resetSession, sessionHandlers, storeRefreshToken, url, useApiOrigin } from '../fixtures/auth.js'
-import { TestApp } from '../fixtures/TestApp.jsx'
+import { TestApp, LocationProbe } from '../fixtures/TestApp.jsx'
+import { AppRoutes } from '../../src/App.jsx'
+import AuthProvider from '../../src/features/auth/AuthProvider.jsx'
 import { createLearningBackend, rawClass, rawDoc, rawModule, rawVideo } from '../fixtures/assessLearningApi.js'
 import { audio } from '../fixtures/dawah.js'
 import { rawQuiz } from '../fixtures/assessments.js'
@@ -134,8 +138,9 @@ describe('enrollment', () => {
   test('unknown class explains unavailability', async () => {
     const backend = createLearningBackend()
     openAt('/dawah/classes/99', backend)
-    expect(await screen.findByRole('alert')).toHaveTextContent('not available')
+    expect(await screen.findByRole('alert')).toHaveTextContent('This class or module is not available. It may not be published or may have been closed.')
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
+    expect(screen.queryByText(/quiz/i)).toBeNull()
   })
 })
 
@@ -232,5 +237,158 @@ describe('guard', () => {
     expect(await screen.findByRole('heading', { name: 'Welcome back to Pythagoras' })).toBeVisible()
     expect(location()).toBe('/sign-in?next=%2Fdawah%2Fclasses%2F2%2Fmodules%2F20')
     expect(backend.state.calls).toEqual([])
+  })
+})
+
+const alertText = () => screen.getByRole('alert').textContent
+
+describe('error wording and enrollment races', () => {
+  test('module 403 ENROLLMENT_REQUIRED race: class wording and an enroll link, no quiz wording', async () => {
+    const backend = createLearningBackend(full())
+    backend.state.failNext = { method: 'GET', suffix: '/modules/20/', response: () => fail(403, 'ENROLLMENT_REQUIRED', 'Enroll to read modules.') }
+    openAt('/dawah/classes/2/modules/20', backend)
+    expect(await screen.findByRole('alert')).toHaveTextContent('You need an active enrollment in this class to read its modules.')
+    expect(alertText()).not.toMatch(/quiz/i)
+    expect(screen.getByRole('link', { name: 'Enroll on the class page' })).toHaveAttribute('href', '/dawah/classes/2')
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
+  })
+
+  test('module list 403 race on the class page keeps the class visible and offers a status refresh', async () => {
+    const backend = createLearningBackend(full())
+    backend.state.failNext = { method: 'GET', suffix: '/modules/', response: () => fail(403, 'ENROLLMENT_REQUIRED', 'Enroll to read modules.') }
+    openAt('/dawah/classes/2', backend)
+    expect(await screen.findByRole('heading', { name: 'Arabic for beginners' })).toBeVisible()
+    expect(await screen.findByText('You need an active enrollment in this class to read its modules.')).toBeVisible()
+    backend.state.enrollments[2].status = 'withdrawn'
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Refresh my enrollment status' }))
+    expect(await screen.findByText('You have withdrawn from this class.', { selector: '[data-testid="enrollment-state"]' })).toBeVisible()
+  })
+
+  test('copy does not claim quizzes need enrollment', async () => {
+    const backend = createLearningBackend({ ...full(), enrollments: {} })
+    openAt('/dawah/classes', backend)
+    expect(await screen.findByText('Enroll in a class to read its modules. Linked quizzes are listed in each module.')).toBeVisible()
+    await userEvent.setup().click(screen.getByRole('link', { name: 'View Arabic for beginners' }))
+    expect(await screen.findByTestId('enrollment-state')).toHaveTextContent('You are not enrolled.')
+    expect(screen.queryByTestId('access-notice')).toBeNull()
+  })
+
+  test('not-enrolled module deep link copy', async () => {
+    const backend = createLearningBackend({ ...full(), enrollments: {} })
+    openAt('/dawah/classes/2/modules/20', backend)
+    expect(await screen.findByText('Enroll to read its modules; linked quizzes are listed in each module.')).toBeVisible()
+  })
+
+  test('follows next when listing modules (more than one page)', async () => {
+    const many = Array.from({ length: 120 }, (_, i) => rawModule({ id: 100 + i, title: `Module ${i + 1}`, order: i + 1 }))
+    const backend = createLearningBackend({ ...full(), modules: { 2: many } })
+    openAt('/dawah/classes/2', backend)
+    const list = await screen.findByRole('heading', { name: 'Modules' }).then((h) => h.closest('section'))
+    await waitFor(() => expect(within(list).getAllByRole('link')).toHaveLength(120))
+    expect(within(list).getAllByRole('link').at(-1)).toHaveTextContent('Module 120')
+    expect(backend.state.calls.filter((c) => c.path === '/quiz/classes/2/modules/').map((c) => c.search.page)).toEqual(['1', '2'])
+  })
+})
+
+describe('class page state, focus and live regions', () => {
+  test('double-clicking Enroll sends one request', async () => {
+    const backend = createLearningBackend({ ...full(), enrollments: {} })
+    openAt('/dawah/classes/2', backend)
+    const button = await screen.findByRole('button', { name: 'Enroll' })
+    await userEvent.setup().dblClick(button)
+    await screen.findByRole('heading', { name: 'Modules' })
+    expect(backend.count('POST', '/enrollment/')).toBe(1)
+  })
+
+  test('withdraw: focus moves into the confirmation, returns to the trigger on cancel, lands on the status after completion; live regions stay mounted', async () => {
+    const backend = createLearningBackend(full())
+    openAt('/dawah/classes/2', backend)
+    const actor = userEvent.setup()
+    const trigger = await screen.findByRole('button', { name: 'Withdraw' })
+    expect(screen.getByTestId('live-notice')).toBeInTheDocument()
+    expect(screen.getByTestId('live-error')).toBeInTheDocument()
+    await actor.click(trigger)
+    expect(screen.getByRole('heading', { name: 'Withdraw from this class?' })).toHaveFocus()
+    await actor.click(screen.getByRole('button', { name: 'Keep my enrollment' }))
+    expect(screen.getByRole('button', { name: 'Withdraw' })).toHaveFocus()
+    await actor.click(screen.getByRole('button', { name: 'Withdraw' }))
+    await actor.click(screen.getByRole('button', { name: 'Yes, withdraw' }))
+    await waitFor(() => expect(screen.getByTestId('enrollment-state')).toHaveFocus())
+    expect(screen.getByTestId('enrollment-state')).toHaveTextContent('You have withdrawn from this class.')
+    expect(screen.getByTestId('live-notice')).toHaveTextContent('Withdrawal saved. Your quiz results are kept.')
+  })
+
+  test('actions refresh in place: the class title never unmounts', async () => {
+    const backend = createLearningBackend({ ...full(), enrollments: {} })
+    openAt('/dawah/classes/2', backend)
+    const title = await screen.findByRole('heading', { name: 'Arabic for beginners', level: 1 })
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Enroll' }))
+    await screen.findByRole('heading', { name: 'Modules' })
+    expect(title.isConnected).toBe(true)
+    expect(screen.queryByText('Loading class…')).toBeNull()
+  })
+
+  test('changing the class id resets confirmation, notice and error', async () => {
+    const backend = createLearningBackend({
+      classes: [rawClass(), rawClass({ id: 3, code: 'ARB102', title: 'Second class' })],
+      modules: {}, enrollments: { 2: { id: 5, status: 'active' }, 3: { id: 6, status: 'active' } },
+    })
+    function Go() {
+      const navigate = useNavigate()
+      return <button type="button" onClick={() => navigate('/c/3')}>go-3</button>
+    }
+    server.use(...backend.handlers)
+    render(
+      <MemoryRouter initialEntries={['/c/2']}>
+        <Go />
+        <Routes><Route path="/c/:id" element={<ClassDetailPage />} /></Routes>
+      </MemoryRouter>,
+    )
+    const actor = userEvent.setup()
+    await actor.click(await screen.findByRole('button', { name: 'Withdraw' }))
+    expect(screen.getByRole('alertdialog')).toBeVisible()
+    await actor.click(screen.getByRole('button', { name: 'go-3' }))
+    expect(await screen.findByRole('heading', { name: 'Second class' })).toBeVisible()
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(screen.getByTestId('live-notice')).toBeEmptyDOMElement()
+    expect(screen.getByTestId('live-error')).toBeEmptyDOMElement()
+  })
+
+  test('back/forward after withdrawing re-checks access and requests no module', async () => {
+    const backend = createLearningBackend(full())
+    function Nav() {
+      const navigate = useNavigate()
+      return (
+        <>
+          <button type="button" onClick={() => navigate(-1)}>history-back</button>
+          <button type="button" onClick={() => navigate(1)}>history-forward</button>
+        </>
+      )
+    }
+    const rec = recorder()
+    server.use(...sessionHandlers(rec), ...backend.handlers)
+    storeRefreshToken()
+    render(
+      <MemoryRouter initialEntries={['/dawah/classes/2']}>
+        <AuthProvider>
+          <Nav />
+          <AppRoutes />
+          <LocationProbe />
+        </AuthProvider>
+      </MemoryRouter>,
+    )
+    const actor = userEvent.setup()
+    await actor.click(await screen.findByRole('link', { name: 'Greetings' }))
+    expect(await screen.findByRole('heading', { name: 'Greetings', level: 1 })).toBeVisible()
+    await actor.click(screen.getByRole('button', { name: 'history-back' }))
+    await actor.click(await screen.findByRole('button', { name: 'Withdraw' }))
+    await actor.click(screen.getByRole('button', { name: 'Yes, withdraw' }))
+    await screen.findByText('You have withdrawn from this class.', { selector: '[data-testid="enrollment-state"]' })
+    const moduleReads = backend.count('GET', '/modules/20/')
+    await actor.click(screen.getByRole('button', { name: 'history-forward' }))
+    expect(await screen.findByText('You have withdrawn from this class')).toBeVisible()
+    expect(screen.queryByTestId('module-body')).toBeNull()
+    expect(backend.count('GET', '/modules/20/')).toBe(moduleReads)
+    expect(backend.state.deniedModuleCalls).toEqual([])
   })
 })

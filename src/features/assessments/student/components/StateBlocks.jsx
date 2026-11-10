@@ -17,13 +17,15 @@ export function Loading({ label = "Loading…" }) {
   );
 }
 
-export function ErrorPanel({ error, onRetry, title = "We couldn't load this" }) {
+/** `message` overrides the quiz-oriented default wording; `children` renders extra actions (e.g. a link). */
+export function ErrorPanel({ error, onRetry, title = "We couldn't load this", message, children }) {
   return (
     <section className={cardClass}>
       <h1 className={headingClass}>{title}</h1>
       <p role="alert" className="mt-2 text-sm text-red-700 dark:text-red-400">
-        {describeAssessmentError(error)}
+        {message ?? describeAssessmentError(error)}
       </p>
+      {children}
       {onRetry && (
         <button type="button" onClick={onRetry} className={`${secondaryButton} mt-4`}>
           Try again

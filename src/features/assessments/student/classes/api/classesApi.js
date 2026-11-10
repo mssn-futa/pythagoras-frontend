@@ -96,9 +96,17 @@ export async function withdraw(classId) {
   await api.delete(`/quiz/classes/${classId}/enrollment/`);
 }
 
+const MAX_MODULE_PAGES = 50;
+
+/** All published modules, following `next` until exhausted (bounded). */
 export async function listModules(classId) {
-  const data = mapPage(await api.get(`/quiz/classes/${classId}/modules/`, { params: { page_size: 100 } }), mapModule);
-  return [...data.results].sort(byOrderThenId);
+  const all = [];
+  for (let page = 1; page <= MAX_MODULE_PAGES; page += 1) {
+    const data = mapPage(await api.get(`/quiz/classes/${classId}/modules/`, { params: { page, page_size: 100 } }), mapModule);
+    all.push(...data.results);
+    if (!data.next) break;
+  }
+  return all.sort(byOrderThenId);
 }
 
 export async function getModule(classId, moduleId) {
@@ -122,8 +130,12 @@ export function accessState(klass, enrollment) {
   return enrollment ? "withdrawn" : "not_enrolled";
 }
 
+/** Frozen contract: a module read without an active enrollment is refused with ENROLLMENT_REQUIRED. */
+export const isEnrollmentRequired = (error) => error?.code === "ENROLLMENT_REQUIRED";
+
 export function describeClassError(error) {
   if (!error) return "Something went wrong. Try again.";
+  if (isEnrollmentRequired(error)) return "You need an active enrollment in this class to read its modules.";
   if (error.status === 403) return "You do not have access to this class.";
   if (error.status === 404) return "This class or module is not available. It may not be published or may have been closed.";
   return error.message || "Something went wrong. Try again.";
