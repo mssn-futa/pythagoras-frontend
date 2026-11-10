@@ -54,7 +54,8 @@ export function mapQuiz(raw) {
     createdAt: raw.created_at ?? null,
     updatedAt: raw.updated_at ?? null,
     relatedEvent: Number.isInteger(raw.related_event) ? raw.related_event : null, // integer pk
-    relatedCourse: raw.related_course ?? null,
+    // ASSUMPTION: related_course is an integer pk like related_event (an expanded {id} object is tolerated).
+    relatedCourse: Number.isInteger(raw.related_course) ? raw.related_course : Number.isInteger(raw.related_course?.id) ? raw.related_course.id : null,
     questions,
     // ASSUMPTION: list items may carry question_count/total_points; detail falls back to a local sum.
     questionCount: toInt(raw.question_count) ?? (raw.questions ? questions.length : null),
@@ -87,7 +88,7 @@ export function mapResult(raw) {
 }
 
 /** Request body for a draft create/edit. Dates are already UTC ISO strings. */
-export function buildQuizPayload({ title, description, timeLimit, deadline, relatedEvent }) {
+export function buildQuizPayload({ title, description, timeLimit, deadline, relatedEvent, relatedCourse }) {
   return {
     title: title.trim(),
     description: description.trim(),
@@ -95,6 +96,8 @@ export function buildQuizPayload({ title, description, timeLimit, deadline, rela
     deadline,
     // related_event is an integer pk. Edits omit it (no UI for it) so a PATCH never clears the association.
     ...(relatedEvent === undefined ? {} : { related_event: relatedEvent }),
+    // Sent only when the admin chose/changed a class, so a PATCH never clears an association by omission.
+    ...(relatedCourse === undefined ? {} : { related_course: relatedCourse }),
   };
 }
 

@@ -16,19 +16,21 @@ import {
 import { formatLagos, isoToLagosInput, lagosInputToIso } from "../dates.js";
 import { describeAssessmentError } from "../errors.js";
 import QuestionEditor from "../components/QuestionEditor.jsx";
+import RelatedCourseSelect from "../classes/components/RelatedCourseSelect.jsx";
 import { inputClass, primaryButton, secondaryButton } from "../components/styles.js";
 import { Alert, ConfirmDialog, FieldError, LoadingBlock, StatusBadge } from "../components/ui.jsx";
 import { blankQuestionDraft, draftFromQuestion, publishBlockers, TIME_LIMIT_MAX, TIME_LIMIT_MIN, totalPoints, validateQuizDetails } from "../quizRules.js";
 
-const DETAIL_FIELDS = ["title", "description", "time_limit", "deadline", "related_event"];
+const DETAIL_FIELDS = ["title", "description", "time_limit", "deadline", "related_event", "related_course"];
 const letter = (index) => String.fromCharCode(65 + index);
 
-const emptyForm = { title: "", description: "", time_limit: "", deadline: "" };
+const emptyForm = { title: "", description: "", time_limit: "", deadline: "", related_course: "" };
 const formFromQuiz = (quiz) => ({
   title: quiz.title,
   description: quiz.description,
   time_limit: quiz.timeLimit === null ? "" : String(quiz.timeLimit),
   deadline: isoToLagosInput(quiz.deadline),
+  related_course: quiz.relatedCourse === null ? "" : String(quiz.relatedCourse),
 });
 
 /** Keyed by quiz id so navigating between quizzes never carries state over. */
@@ -123,6 +125,7 @@ function QuizEditor({ id }) {
             timeLimit: form.time_limit.trim() ? Number(form.time_limit) : null,
             deadline: lagosInputToIso(form.deadline),
             relatedEvent: null, // D3 draft example; no UI for event association yet
+            relatedCourse: form.related_course ? Number(form.related_course) : undefined,
           }),
         );
         navigate(`/admin/quizzes/${created.id}`, { replace: true, state: { notice: "Draft saved. You can now add questions." } });
@@ -135,6 +138,7 @@ function QuizEditor({ id }) {
             description: form.description,
             timeLimit: form.time_limit.trim() ? Number(form.time_limit) : null,
             deadline: deadlineToSend(),
+            relatedCourse: form.related_course === savedForm.related_course ? undefined : form.related_course ? Number(form.related_course) : null,
           })
         : { title: form.title.trim(), description: form.description.trim() };
       await updateQuiz(id, payload);
@@ -328,6 +332,14 @@ function QuizEditor({ id }) {
             />
             <FieldError id="deadline-error">{errorText("deadline")}</FieldError>
             {readOnlyGrading && quiz.deadline && <p className="mt-1 text-xs text-gray-500">Locked: {formatLagos(quiz.deadline)}</p>}
+          </div>
+          <div className="md:col-span-3">
+            <RelatedCourseSelect
+              value={form.related_course}
+              disabled={readOnlyGrading}
+              onChange={(value) => setForm({ ...form, related_course: value })}
+              error={errorText("related_course")}
+            />
           </div>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
