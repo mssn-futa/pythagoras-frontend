@@ -107,6 +107,8 @@ describe('route guards', () => {
       await meGate
       return ok(user)
     }))
+    // The mounted admin students page loads its list once the guard admits the admin.
+    server.use(http.get(url('/accounts/students/'), () => ok({ count: 0, next: null, previous: null, results: [] })))
     storeRefreshToken()
     const history = []
     render(<TestApp path={path} history={history} />)
