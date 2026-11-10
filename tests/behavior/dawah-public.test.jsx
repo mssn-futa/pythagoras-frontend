@@ -19,7 +19,7 @@ afterEach(resetSession)
 
 function serve(handlers) {
   const h = publicHandlers(handlers)
-  server.serve(...h.list)
+  server.use(...h.list)
   return h
 }
 
@@ -168,7 +168,7 @@ describe('archive page', () => {
 
   test('a signed-in student can use it as well, with the same public requests', async () => {
     storeRefreshToken()
-    server.serve(
+    server.use(
       http.post(url('/accounts/refresh/'), () => ok({ access: 'access-2', refresh: 'refresh-2' })),
       http.get(url('/accounts/me/'), () => ok({ id: 1, email: 's@example.test', first_name: 'A', last_name: 'B', role: 'student', is_active: true })),
     )
