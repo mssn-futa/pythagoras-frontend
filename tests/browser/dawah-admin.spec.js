@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { test, expect } from './test.js'
 
 // Synthetic, test-only backend: Pythagoras API plus a fake R2 host.
@@ -77,7 +78,7 @@ test('admin uploads audio directly to storage (no bearer), sees server-validated
   await expect(page.getByRole('heading', { name: 'Patience' })).toBeVisible()
   expect(await page.getByLabel(/MP3 file/).isVisible()).toBe(true)
 
-  await page.getByLabel(/MP3 file/).setInputFiles({ name: 'khutbah.mp3', mimeType: 'audio/mpeg', buffer: new Uint8Array(4096).fill(1) })
+  await page.getByLabel(/MP3 file/).setInputFiles({ name: 'khutbah.mp3', mimeType: 'audio/mpeg', buffer: Buffer.alloc(4096, 1) })
   await expect(page.getByText(/server confirmed this audio is ready/i)).toBeVisible()
 
   expect(seen.intents).toBe(1)
