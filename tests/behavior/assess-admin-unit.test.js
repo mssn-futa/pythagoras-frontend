@@ -43,6 +43,15 @@ describe('service mapping', () => {
     expect(mapQuiz({ id: 1, title: 'x', status: 'published' }).status).toBe('published')
   })
 
+  test('content_editable is read from the server; missing means locked unless draft', () => {
+    expect(mapQuiz({ id: 1, status: 'draft', content_editable: false }).contentEditable).toBe(false)
+    expect(mapQuiz({ id: 1, status: 'published', content_editable: true }).contentEditable).toBe(true)
+    expect(mapQuiz({ id: 1, status: 'draft' }).contentEditable).toBe(true)
+    expect(mapQuiz({ id: 1, status: 'published' }).contentEditable).toBe(false)
+    expect(mapQuiz({ id: 1, status: 'closed' }).contentEditable).toBe(false)
+    expect(mapQuiz({ id: 1 }).contentEditable).toBe(false)
+  })
+
   test('non-paginated data is a contract error, not an empty list', () => {
     const bad = [[], { results: [] }, { count: 1 }, null, { count: 'x', results: [] }]
     for (const value of bad) expect(() => mapPage(value, mapQuiz)).toThrow(/unexpected response/)

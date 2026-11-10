@@ -1,7 +1,7 @@
 import { describeFormError } from "../../auth/formErrors.js";
 
 const IMMUTABLE_MESSAGE =
-  "This quiz has been published, so its questions, options, points, correct answers, duration, deadline and links can no longer change. Only the title and description can be corrected.";
+  "This quiz's questions, options, points, correct answers, duration, deadline and links are locked (it is published, or it has recorded attempts or results), so they can no longer change. Only the title and description can be corrected.";
 
 /**
  * Maps an ApiError to what the admin screens show. `fields` holds errors for
