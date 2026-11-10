@@ -2,6 +2,7 @@ import { http, HttpResponse, delay } from 'msw'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { api, apiClient, ApiError, refreshSession } from '../../src/services/api/axiosConfig.js'
 import {
+  clearSession,
   getAccessToken,
   getRefreshToken,
   onSessionEnded,
@@ -154,12 +155,12 @@ describe('refresh and retry', () => {
     unsubscribe()
   })
 
-  test('refresh failure clears memory and storage and signals sign-out once', async () => {
+  test.each([400, 401, 403])('a definitive %i refresh rejection clears memory and storage and signals sign-out once', async (status) => {
     const rec = recorder()
     const ended = vi.fn()
     const unsubscribe = onSessionEnded(ended)
     server.use(
-      refreshHandler(rec, () => fail(401, 'TOKEN_NOT_VALID', 'Token is blacklisted.')),
+      refreshHandler(rec, () => fail(status, 'TOKEN_NOT_VALID', 'Token is blacklisted.')),
       protectedHandler(rec, '/quiz/a/'),
       protectedHandler(rec, '/quiz/b/'),
     )
@@ -206,5 +207,137 @@ describe('refresh and retry', () => {
     await expect(api.get('/quiz/a/')).rejects.toMatchObject({ status: 401 })
     expect(rec.count('/accounts/refresh/')).toBe(0)
     expect(getAccessToken()).toBeNull()
+  })
+})
+
+describe('transient refresh failures and session generations', () => {
+  function refreshHandler(rec, respond, wait = 20) {
+    return http.post(url('/accounts/refresh/'), async ({ request }) => {
+      await rec.record(request)
+      await (typeof wait === 'number' ? delay(wait) : wait)
+      return respond()
+    })
+  }
+  // Holds the refresh response until the test releases it.
+  function gate() {
+    let release
+    const promise = new Promise((resolve) => { release = resolve })
+    return { promise, release }
+  }
+  const rotated = () => ok({ access: 'access-2', refresh: 'refresh-2' })
+  function protectedHandler(rec, path, { wait = 0 } = {}) {
+    return http.get(url(path), async ({ request }) => {
+      const entry = await rec.record(request)
+      if (wait) await delay(wait)
+      return entry.auth === 'Bearer access-2' ? ok({ path }) : fail(401, 'NOT_AUTHENTICATED', 'Token expired.')
+    })
+  }
+
+  test.each([
+    ['a network failure', () => HttpResponse.error(), 0, 'NETWORK_ERROR'],
+    ['a 429', () => fail(429, 'THROTTLED', 'Slow down.'), 429, 'THROTTLED'],
+    ['a 500', () => fail(500, 'SERVER_ERROR', 'Internal error.'), 500, 'SERVER_ERROR'],
+    ['a 503', () => fail(503, 'SERVICE_UNAVAILABLE', 'Unavailable.'), 503, 'SERVICE_UNAVAILABLE'],
+  ])('%s during refresh keeps the session and rejects with that error', async (_label, respond, status, code) => {
+    const rec = recorder()
+    const ended = vi.fn()
+    const unsubscribe = onSessionEnded(ended)
+    server.use(refreshHandler(rec, respond), protectedHandler(rec, '/quiz/a/'))
+    signedIn()
+
+    await expect(api.get('/quiz/a/')).rejects.toMatchObject({ status, code })
+    expect(rec.count('/accounts/refresh/')).toBe(1)
+    expect(rec.count('/quiz/a/')).toBe(1)
+    expect(getAccessToken()).toBe('access-1')
+    expect(getRefreshToken()).toBe('refresh-1')
+    expect(ended).not.toHaveBeenCalled()
+    unsubscribe()
+  })
+
+  test('a 401 that arrives after another request refreshed reuses the new token without a second refresh', async () => {
+    const rec = recorder()
+    server.use(
+      refreshHandler(rec, rotated),
+      protectedHandler(rec, '/quiz/slow/', { wait: 120 }), // still in flight while the refresh completes
+      protectedHandler(rec, '/quiz/fast/'),
+    )
+    signedIn()
+
+    const slow = api.get('/quiz/slow/')
+    await delay(5)
+    await expect(api.get('/quiz/fast/')).resolves.toEqual({ path: '/quiz/fast/' })
+    expect(getAccessToken()).toBe('access-2')
+    await expect(slow).resolves.toEqual({ path: '/quiz/slow/' })
+
+    expect(rec.count('/accounts/refresh/')).toBe(1)
+    expect(rec.calls.filter((call) => call.path === '/quiz/slow/').map((call) => call.auth))
+      .toEqual(['Bearer access-1', 'Bearer access-2'])
+  })
+
+  test('logout during an in-flight refresh revokes the rotated token and does not resurrect the session', async () => {
+    const rec = recorder()
+    const held = gate()
+    server.use(
+      refreshHandler(rec, rotated, held.promise),
+      protectedHandler(rec, '/quiz/a/'),
+      http.post(url('/accounts/logout/'), async ({ request }) => {
+        await rec.record(request)
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    signedIn()
+
+    const pending = api.get('/quiz/a/').catch((error) => error)
+    await vi.waitFor(() => expect(rec.count('/accounts/refresh/')).toBe(1))
+    const loggingOut = authService.logout()
+    expect(getAccessToken()).toBeNull() // cleared before the refresh settles
+    held.release()
+    await loggingOut
+    const outcome = await pending
+
+    expect(outcome).toBeInstanceOf(ApiError)
+    expect(outcome.status).toBe(401)
+    expect(rec.calls.find((call) => call.path === '/accounts/logout/'))
+      .toMatchObject({ auth: 'Bearer access-2', body: { refresh: 'refresh-2' } })
+    // The original request was not retried as authenticated after logout.
+    expect(rec.count('/quiz/a/')).toBe(1)
+    expect(getAccessToken()).toBeNull()
+    expect(sessionStorage.getItem(REFRESH_STORAGE_KEY)).toBeNull()
+    await delay(80)
+    expect(sessionStorage.getItem(REFRESH_STORAGE_KEY)).toBeNull()
+  })
+
+  test('a refresh result from a cleared session generation is discarded', async () => {
+    const rec = recorder()
+    const held = gate()
+    server.use(refreshHandler(rec, rotated, held.promise), protectedHandler(rec, '/quiz/a/'))
+    signedIn()
+
+    const pending = api.get('/quiz/a/').catch((error) => error)
+    await vi.waitFor(() => expect(rec.count('/accounts/refresh/')).toBe(1))
+    clearSession()
+    held.release()
+    const outcome = await pending
+
+    expect(outcome).toMatchObject({ status: 401 })
+    expect(rec.count('/quiz/a/')).toBe(1)
+    expect(getAccessToken()).toBeNull()
+    expect(sessionStorage.getItem(REFRESH_STORAGE_KEY)).toBeNull()
+  })
+
+  test('a 401 from a previous session is never retried with a newer session\'s token', async () => {
+    const rec = recorder()
+    server.use(refreshHandler(rec, rotated), protectedHandler(rec, '/quiz/slow/', { wait: 60 }))
+    signedIn('access-1', 'refresh-1')
+
+    const pending = api.get('/quiz/slow/').catch((error) => error)
+    await vi.waitFor(() => expect(rec.count('/quiz/slow/')).toBe(1))
+    clearSession() // logout ...
+    setSessionTokens({ access: 'access-2', refresh: 'refresh-other' }) // ... and another sign-in
+
+    expect(await pending).toMatchObject({ status: 401 })
+    expect(rec.count('/quiz/slow/')).toBe(1)
+    expect(rec.count('/accounts/refresh/')).toBe(0)
+    expect(getAccessToken()).toBe('access-2')
   })
 })

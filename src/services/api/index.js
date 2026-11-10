@@ -4,6 +4,7 @@ export {
   ApiError,
   getApiBaseUrl,
   isApiError,
+  isDefinitiveRefreshRejection,
   normalizeApiError,
   normalizeFieldErrors,
   refreshSession,

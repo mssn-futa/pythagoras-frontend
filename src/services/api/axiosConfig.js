@@ -3,6 +3,7 @@ import {
   clearSession,
   getAccessToken,
   getRefreshToken,
+  getSessionGeneration,
   notifySessionEnded,
   setSessionTokens,
 } from "./session.js";
@@ -159,43 +160,80 @@ apiClient.interceptors.request.use((config) => {
   const token = config.public ? null : getAccessToken();
   if (token) {
     config.headers.set("Authorization", `Bearer ${token}`);
-  } else {
+  } else if (config.public) {
     config.headers.delete("Authorization");
   }
   config._accessTokenUsed = token;
+  config._sessionGeneration = getSessionGeneration();
   return config;
 });
+
+/**
+ * Only a definitive answer from /accounts/refresh/ (400/401/403) ends the
+ * session. Network/timeout (status 0), 429 and 5xx are transient: tokens are
+ * kept and the caller receives the normalized error.
+ */
+export function isDefinitiveRefreshRejection(error) {
+  return [400, 401, 403].includes(error?.status);
+}
+
+function sessionEndedError() {
+  return new ApiError({ status: 401, code: "SESSION_EXPIRED" });
+}
 
 let refreshInFlight = null;
 
 /**
- * Exchanges the stored refresh token for a rotated pair. Concurrent callers
- * share ONE in-flight request. On failure the session is cleared and the
- * sign-out signal fires; the returned promise rejects with an ApiError.
+ * Exchanges the stored refresh token for a rotated pair. Concurrent callers in
+ * the same session generation share ONE in-flight request. A result that
+ * arrives after the session was cleared (logout) is discarded. A definitive
+ * rejection clears the session and signals sign-out; transient failures keep
+ * the tokens. Rejects with an ApiError.
  */
 export function refreshSession() {
-  if (refreshInFlight) return refreshInFlight;
+  const generation = getSessionGeneration();
+  if (refreshInFlight && refreshInFlight.generation === generation) return refreshInFlight.result;
   const refresh = getRefreshToken();
   if (!refresh) {
     endSession("expired");
-    return Promise.reject(new ApiError({ status: 401, code: "SESSION_EXPIRED" }));
+    return Promise.reject(sessionEndedError());
   }
-  refreshInFlight = apiClient
-    .post(REFRESH_PATH, { refresh }, { public: true })
-    .then((response) => {
-      const tokens = response.data;
-      if (!tokens?.access) throw new ApiError({ status: 401 });
-      setSessionTokens({ access: tokens.access, refresh: tokens.refresh || refresh });
+  const raw = apiClient.post(REFRESH_PATH, { refresh }, { public: true }).then((response) => {
+    const tokens = response.data;
+    if (!tokens?.access) throw new ApiError({ status: 401, code: "TOKEN_NOT_VALID" });
+    return { access: tokens.access, refresh: tokens.refresh || refresh };
+  });
+  const result = raw.then(
+    (tokens) => {
+      if (getSessionGeneration() !== generation) throw sessionEndedError();
+      setSessionTokens(tokens);
       return tokens.access;
-    })
-    .catch((error) => {
-      endSession("expired");
-      throw normalizeApiError(error);
-    })
+    },
+    (error) => {
+      const normalized = normalizeApiError(error);
+      if (isDefinitiveRefreshRejection(normalized) && getSessionGeneration() === generation) {
+        endSession("expired");
+      }
+      throw normalized;
+    },
+  );
+  const entry = { generation, raw, result };
+  refreshInFlight = entry;
+  result
     .finally(() => {
-      refreshInFlight = null;
-    });
-  return refreshInFlight;
+      if (refreshInFlight === entry) refreshInFlight = null;
+    })
+    .catch(() => {});
+  return result;
+}
+
+/**
+ * The raw rotated pair of the refresh currently in flight (or null). Logout
+ * awaits it so it can revoke the newest refresh token even though the result
+ * is no longer applied to the cleared session.
+ */
+export function pendingRefreshTokens() {
+  return refreshInFlight ? refreshInFlight.raw.catch(() => null) : null;
 }
 
 function endSession(reason) {
@@ -213,6 +251,10 @@ async function retryAfterAuthFailure(error) {
     !config.skipAuthRefresh;
   if (!eligible) throw normalizeApiError(error);
 
+  // The session this request was sent under has ended (logout/sign-out):
+  // never retry it with another session's credentials.
+  if (config._sessionGeneration !== getSessionGeneration()) throw normalizeApiError(error);
+
   if (config._authRetried) {
     // A request already retried with a fresh token was still rejected: stop.
     endSession("expired");
@@ -229,11 +271,14 @@ async function retryAfterAuthFailure(error) {
     endSession("expired");
     throw normalizeApiError(error);
   }
+  const generation = config._sessionGeneration;
   try {
     await refreshSession();
-  } catch {
-    throw new ApiError({ status: 401, code: "SESSION_EXPIRED" });
+  } catch (refreshError) {
+    if (isDefinitiveRefreshRejection(refreshError)) throw sessionEndedError();
+    throw refreshError;
   }
+  if (getSessionGeneration() !== generation) throw sessionEndedError();
   return apiClient(config);
 }
 

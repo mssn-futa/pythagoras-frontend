@@ -12,6 +12,9 @@
 export const REFRESH_STORAGE_KEY = "pythagoras.refreshToken";
 
 let accessToken = null;
+// Incremented whenever the session is cleared. Work started under an older
+// generation (an in-flight refresh or retry) must not touch the new session.
+let generation = 0;
 const listeners = new Set();
 
 function storage() {
@@ -20,6 +23,10 @@ function storage() {
   } catch {
     return null;
   }
+}
+
+export function getSessionGeneration() {
+  return generation;
 }
 
 export function getAccessToken() {
@@ -48,6 +55,7 @@ export function setSessionTokens({ access, refresh }) {
 }
 
 export function clearSession() {
+  generation += 1;
   accessToken = null;
   try {
     storage()?.removeItem(REFRESH_STORAGE_KEY);
