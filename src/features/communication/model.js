@@ -1,4 +1,5 @@
 import { LEVEL_OPTIONS } from "../../services/api/authService.js";
+import { plainToHtml } from "./editor/richContent.js";
 
 export const POLL_INTERVAL_MS = 5000;
 export const POLL_MAX_POLLS = 60; // 5 minutes of automatic refresh, then a manual refresh is offered.
@@ -73,22 +74,29 @@ export function audienceLabel(audience) {
   return "All active students";
 }
 
-export const EMPTY_FORM = Object.freeze({ subject: "", body: "", audienceType: "all", department: "", level: "" });
+export const EMPTY_FORM = Object.freeze({ subject: "", bodyFormat: "plain", body: "", bodyHtml: "", audienceType: "all", department: "", level: "" });
 
 export function draftToForm(draft) {
   return {
     subject: draft.subject,
+    bodyFormat: draft.bodyFormat === "rich" ? "rich" : "plain",
+    // Rich: `body` is the server text fallback and `bodyHtml` the canonical HTML.
     body: draft.body,
+    bodyHtml: draft.bodyFormat === "rich" ? draft.bodyHtml || plainToHtml(draft.body) : "",
     audienceType: draft.audience.type,
     department: draft.audience.department,
     level: draft.audience.level,
   };
 }
 
-export function formToDraft(form) {
+/** `persistedFormat` is the saved draft's format; converting rich → plain must say so explicitly. */
+export function formToDraft(form, persistedFormat = null) {
+  const rich = form.bodyFormat === "rich";
   return {
     subject: form.subject,
+    bodyFormat: rich ? "rich" : persistedFormat === "rich" ? "plain" : undefined,
     body: form.body,
+    bodyHtml: form.bodyHtml,
     audience: { type: form.audienceType, department: form.department, level: form.level },
   };
 }
@@ -110,7 +118,7 @@ export function validateForm(form) {
 }
 
 /** Stable comparison key of what would be saved. */
-export const formKey = (form) => JSON.stringify([form.subject.trim(), form.body, form.audienceType, form.audienceType === "department" ? form.department.trim() : "", form.audienceType === "level" ? form.level : ""]);
+export const formKey = (form) => JSON.stringify([form.subject.trim(), form.bodyFormat === "rich" ? ["rich", form.bodyHtml] : ["plain", form.body], form.audienceType, form.audienceType === "department" ? form.department.trim() : "", form.audienceType === "level" ? form.level : ""]);
 
 const lagos = new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Lagos", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
 

@@ -156,7 +156,9 @@ describe('preview safety', () => {
     expect(body.textContent).toBe(hostile)
     expect(screen.getByTestId('preview-subject').textContent).toBe('<i>Hi</i>')
     const section = body.closest('section')
-    expect(section.querySelector('script, img, b, i, iframe')).toBeNull()
+    // The only element allowed is the sandboxed frame; no hostile markup reaches the app document.
+    expect(section.querySelector('script, img, b, i')).toBeNull()
+    expect(section.querySelectorAll('iframe')).toHaveLength(1)
     expect(within(section).getByText(/About 42 recipients/)).toHaveTextContent(/estimate/)
     expect(backend.only('POST', '/preview/')).toHaveLength(1)
     expect(backend.only('POST', '/queue/')).toHaveLength(0)
@@ -279,23 +281,12 @@ describe('drafts list', () => {
 })
 
 describe('contract edge cases', () => {
-  test('a rich draft opens read-only with an edit-in-rich-editor notice and is never PATCHed', async () => {
-    const backend = createBackend({ broadcasts: [wireBroadcast({ id: 9, body_format: 'rich', body: 'Key lessons', subject: 'Rich' })] })
-    open(backend, '/admin/communication/drafts/9')
-    expect(await screen.findByText(/Edit it in the rich editor/)).toBeVisible()
-    expect(screen.getByTestId('rich-readonly-body')).toHaveTextContent('Key lessons')
-    expect(screen.queryByLabelText('Subject')).toBeNull()
-    expect(screen.queryByRole('button', { name: /Save/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: /Queue/ })).toBeNull()
-    expect(backend.only('PATCH')).toEqual([])
-  })
-
   test('an unrecognised audience is not shown as "all" and blocks saving', async () => {
     const backend = createBackend({ broadcasts: [wireBroadcast({ id: 9, audience: { type: 'galaxy' } })] })
     open(backend, '/admin/communication/drafts/9')
     const actor = userEvent.setup()
     await screen.findByLabelText('Subject')
-    for (const radio of screen.getAllByRole('radio')) expect(radio).not.toBeChecked()
+    for (const radio of within(screen.getByRole('group', { name: 'Audience' })).getAllByRole('radio')) expect(radio).not.toBeChecked()
     expect(screen.getByText(/unrecognised audience/)).toBeVisible()
     await actor.type(screen.getByLabelText('Subject'), '!')
     await actor.click(screen.getByRole('button', { name: 'Save changes' }))

@@ -69,12 +69,12 @@ describe('payload and response mapping', () => {
     expect((await getBroadcast(9)).subject).toBe('Nine')
   })
 
-  test('preview keeps text only and drops every html field', async () => {
+  test('preview maps the server rendered_html for the sandbox only and never body_html', async () => {
     const backend = createBackend({ broadcasts: [wireBroadcast({ id: 7 })] })
     server.use(...backend.handlers)
     const preview = await previewBroadcast(7, 1)
     expect(backend.calls[0]).toMatchObject({ method: 'POST', path: '/dawah/broadcasts/7/preview/', body: { version: 1 } })
-    expect(preview).toEqual({ subject: 'Weekly Da’wah summary', body: 'Summary and recording link', renderedText: 'Summary and recording link', audienceCount: 42 })
+    expect(preview).toEqual({ subject: 'Weekly Da’wah summary', body: 'Summary and recording link', renderedText: 'Summary and recording link', renderedHtml: '<p>Summary and recording link</p>', audienceCount: 42 })
     expect(normalizePreview({ subject: 's', body: 'b', body_html: '<script>', rendered_html: '<b>' })).not.toHaveProperty('bodyHtml')
   })
 

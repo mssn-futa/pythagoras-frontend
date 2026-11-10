@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useId, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { FormAlert, FormNotice, inputClass } from "../../auth/components/FormControls.jsx";
 import { describeFormError } from "../../auth/formErrors.js";
@@ -6,9 +6,14 @@ import { createDraft, getBroadcast, previewBroadcast, queueBroadcast, updateDraf
 import AudienceSelector from "../components/AudienceSelector.jsx";
 import { cardClass, LoadingLine, PageError, primaryButton, secondaryButton } from "../components/common.jsx";
 import QueueConfirmDialog from "../components/QueueConfirmDialog.jsx";
-import { allows, audienceLabel, draftToForm, EMPTY_FORM, formKey, formToDraft, validateForm } from "../model.js";
+import { hasRichFormatting, plainToHtml } from "../editor/richContent.js";
+import SafePreviewFrame from "../editor/SafePreviewFrame.jsx";
+import { allows, draftToForm, EMPTY_FORM, formKey, formToDraft, validateForm } from "../model.js";
 
-const FORM_FIELDS = ["subject", "body", "audience", "department", "level"];
+// The editor (ProseMirror) is a separate chunk, fetched only when rich mode is used.
+const RichEditor = lazy(() => import("../editor/RichEditor.jsx"));
+
+const FORM_FIELDS = ["subject", "body", "body_html", "audience", "department", "level"];
 const VERSION_CONFLICT = "BROADCAST_VERSION_CONFLICT";
 const ALREADY_QUEUED = "BROADCAST_ALREADY_QUEUED";
 
@@ -48,7 +53,14 @@ function Preview({ preview }) {
       </p>
       <p className="mt-4 text-xs font-medium uppercase tracking-wide text-gray-500">Subject</p>
       <p data-testid="preview-subject" className="break-words text-[#1F2937] dark:text-white">{preview.subject}</p>
-      <p className="mt-4 text-xs font-medium uppercase tracking-wide text-gray-500">Message (plain text)</p>
+      {preview.renderedHtml && (
+        <>
+          <p className="mt-4 text-xs font-medium uppercase tracking-wide text-gray-500">Email (as it will be sent)</p>
+          <p className="mt-1 text-xs text-gray-500">Shown in an isolated frame: scripts, forms and external content are blocked.</p>
+          <SafePreviewFrame html={preview.renderedHtml} title="Email preview (sandboxed)" className="mt-2" />
+        </>
+      )}
+      <p className="mt-4 text-xs font-medium uppercase tracking-wide text-gray-500">Plain-text version (fallback)</p>
       <pre data-testid="preview-body" className="mt-1 whitespace-pre-wrap break-words rounded-lg bg-gray-50 p-3 font-sans text-sm text-[#1F2937] dark:bg-gray-900 dark:text-gray-100">
         {preview.renderedText ?? preview.body}
       </pre>
@@ -75,12 +87,16 @@ function Editor({ id }) {
   const [confirming, setConfirming] = useState(false);
   const [queueing, setQueueing] = useState(false);
   const [queueError, setQueueError] = useState(null);
+  const [editorEpoch, setEditorEpoch] = useState(0); // remount the editor to load new canonical content
+  const [confirmingPlain, setConfirmingPlain] = useState(false);
 
   const adopt = useCallback((broadcast) => {
     const next = draftToForm(broadcast);
     setDraft(broadcast);
     setForm(next);
     setBaseline(formKey(next));
+    setEditorEpoch((epoch) => epoch + 1);
+    setConfirmingPlain(false);
   }, []);
 
   const load = useCallback(async () => {
@@ -105,6 +121,25 @@ function Editor({ id }) {
     setNotice(null);
   };
 
+  const rich = form.bodyFormat === "rich";
+  const onRichChange = ({ html, text }) => {
+    setForm((current) => (current.bodyFormat === "rich" ? { ...current, bodyHtml: html, body: text } : current));
+    setNotice(null);
+  };
+  // Conversion is local: nothing is saved (and no saved content overwritten) until the admin saves.
+  const switchTo = (format) => {
+    setConfirmingPlain(false);
+    if (format === form.bodyFormat) return;
+    if (format === "rich") {
+      set({ bodyFormat: "rich", bodyHtml: plainToHtml(form.body) });
+      setEditorEpoch((epoch) => epoch + 1);
+    } else if (hasRichFormatting(form.bodyHtml) && !confirmingPlain) {
+      setConfirmingPlain(true);
+    } else {
+      set({ bodyFormat: "plain", bodyHtml: "" });
+    }
+  };
+
   const failWith = (caught) => {
     const { message, fields } = describeFormError(caught, FORM_FIELDS);
     setFieldErrors(fields);
@@ -121,7 +156,7 @@ function Editor({ id }) {
     setSaving(true);
     try {
       if (draft) {
-        const saved = await updateDraft(draft.id, formToDraft(form), draft.version);
+        const saved = await updateDraft(draft.id, formToDraft(form, draft.bodyFormat), draft.version);
         adopt(saved);
         setNotice("Draft saved.");
       } else {
@@ -186,24 +221,6 @@ function Editor({ id }) {
 
   if (status === "loading") return <LoadingLine>Loading draft…</LoadingLine>;
   if (status === "error") return <PageError error={loadError} onRetry={load} />;
-  if (draft && draft.state === "draft" && draft.bodyFormat === "rich") {
-    // Rich drafts are never opened in the plain editor: saving here would flatten them.
-    return (
-      <div className={`${cardClass} space-y-3`}>
-        <h2 className="text-lg font-semibold text-[#1F2937] dark:text-white">Draft #{draft.id} is a rich-text draft</h2>
-        <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          This draft uses rich formatting. Edit it in the rich editor; it cannot be edited or saved from this plain-text form.
-        </p>
-        <dl className="space-y-2 text-sm">
-          <div><dt className="font-medium">Subject</dt><dd className="break-words">{draft.subject}</dd></div>
-          <div><dt className="font-medium">Audience</dt><dd>{audienceLabel(draft.audience)}</dd></div>
-        </dl>
-        <pre data-testid="rich-readonly-body" className="whitespace-pre-wrap break-words rounded-lg bg-gray-50 p-3 font-sans text-sm text-[#1F2937]">
-          {draft.body}
-        </pre>
-      </div>
-    );
-  }
   if (draft && draft.state !== "draft") {
     return (
       <div className={cardClass}>
@@ -219,6 +236,7 @@ function Editor({ id }) {
 
   const activePreview = preview && draft && preview.version === draft.version && !dirty ? preview.data : null;
   const saved = Boolean(draft) && !dirty && !conflict;
+  const bodyErrors = fieldErrors.body || fieldErrors.body_html ? [...(fieldErrors.body ?? []), ...(fieldErrors.body_html ?? [])] : undefined;
 
   return (
     <div className="space-y-6">
@@ -248,17 +266,57 @@ function Editor({ id }) {
             maxLength={250}
           />
         </Field>
-        <Field label="Message (plain text)" errors={fieldErrors.body} htmlFor={`${formId}-body`}>
-          <textarea
-            id={`${formId}-body`}
-            className={`${inputClass} min-h-48`}
-            rows={8}
-            value={form.body}
-            onChange={(event) => set({ body: event.target.value })}
-            aria-invalid={fieldErrors.body ? true : undefined}
-            aria-describedby={fieldErrors.body ? `${formId}-body-error` : undefined}
-          />
-        </Field>
+        <fieldset className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <legend className="mb-1 block text-sm font-medium text-[#4B5563] dark:text-gray-300">Message format</legend>
+          {[["plain", "Plain text"], ["rich", "Rich text"]].map(([value, label]) => (
+            <label key={value} className="flex items-center gap-2 text-sm text-[#1F2937] dark:text-gray-100">
+              <input type="radio" name={`${formId}-format`} value={value} checked={form.bodyFormat === value} onChange={() => switchTo(value)} className="h-4 w-4 accent-[#2A742F]" />
+              {label}
+            </label>
+          ))}
+        </fieldset>
+        {confirmingPlain && (
+          <div role="alertdialog" aria-labelledby={`${formId}-plain-title`} className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+            <p id={`${formId}-plain-title`} className="font-medium">Switch to plain text?</p>
+            <p className="mt-1">Bold, italics, headings, lists, quotes and links will be removed from the message. Nothing changes on the server until you save.</p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <button type="button" className={secondaryButton} onClick={() => switchTo("plain")}>Remove formatting</button>
+              <button type="button" className={secondaryButton} onClick={() => setConfirmingPlain(false)}>Keep rich text</button>
+            </div>
+          </div>
+        )}
+        {rich ? (
+          <div>
+            <p id={`${formId}-body-label`} className="mb-1 block text-sm font-medium text-[#4B5563] dark:text-gray-300">Message (rich text)</p>
+            <Suspense fallback={<LoadingLine>Loading editor…</LoadingLine>}>
+              <RichEditor
+                key={editorEpoch}
+                id={`${formId}-body`}
+                value={form.bodyHtml}
+                onChange={onRichChange}
+                labelledBy={`${formId}-body-label`}
+                invalid={Boolean(bodyErrors)}
+                describedBy={bodyErrors ? `${formId}-body-error` : undefined}
+              />
+            </Suspense>
+            {bodyErrors && (
+              <p id={`${formId}-body-error`} className="mt-1 text-xs text-red-600 dark:text-red-400">{bodyErrors.join(" ")}</p>
+            )}
+            <p className="mt-1 text-xs text-gray-500">Only paragraphs, bold, italics, headings, lists, quotes and http/https links are kept. Pasted formatting outside that is removed.</p>
+          </div>
+        ) : (
+          <Field label="Message (plain text)" errors={bodyErrors} htmlFor={`${formId}-body`}>
+            <textarea
+              id={`${formId}-body`}
+              className={`${inputClass} min-h-48`}
+              rows={8}
+              value={form.body}
+              onChange={(event) => set({ body: event.target.value })}
+              aria-invalid={bodyErrors ? true : undefined}
+              aria-describedby={bodyErrors ? `${formId}-body-error` : undefined}
+            />
+          </Field>
+        )}
         <AudienceSelector value={form} errors={audienceErrors(fieldErrors) ?? (form.audienceType === "unknown" ? validateForm(form).audience : undefined)} onChange={(next) => set(next)} />
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <button type="submit" className={primaryButton} disabled={saving || conflict || (Boolean(draft) && !dirty)}>

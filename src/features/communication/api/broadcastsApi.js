@@ -44,7 +44,9 @@ export function normalizeBroadcast(raw) {
     id: raw.id,
     subject: String(raw.subject ?? ""),
     body: String(raw.body ?? ""),
-    bodyFormat: raw.body_format ?? "plain",
+    bodyFormat: raw.body_format === "rich" ? "rich" : "plain",
+    // Server-canonical sanitized HTML (rich drafts). Only ever given to the editor schema, never rendered raw.
+    bodyHtml: typeof raw.body_html === "string" ? raw.body_html : "",
     audience: normalizeAudience(raw.audience),
     state: String(raw.state ?? "draft"),
     version: raw.version,
@@ -77,14 +79,17 @@ export function normalizeDelivery(raw) {
 }
 
 /**
- * Preview is text-only by design: HTML fields (`body_html`, rendered HTML) are
- * intentionally not mapped, so no caller can inject server or user HTML.
+ * `renderedHtml` is the server's sanitized email HTML. It must only be passed to
+ * SafePreviewFrame (sandboxed iframe); never insert it into the app document.
+ * The preview's `body_html` is deliberately not mapped: the canonical draft HTML
+ * comes from the broadcast payload.
  */
 export function normalizePreview(raw) {
   return {
     subject: String(raw?.subject ?? ""),
     body: String(raw?.body ?? ""),
     renderedText: raw?.rendered_text == null ? null : String(raw.rendered_text),
+    renderedHtml: typeof raw?.rendered_html === "string" && raw.rendered_html.trim() ? raw.rendered_html : null,
     audienceCount: Number.isInteger(raw?.audience_count) ? raw.audience_count : null,
   };
 }
@@ -98,8 +103,18 @@ function normalizePage(data, map) {
   };
 }
 
-export function toDraftPayload({ subject, body, audience }) {
-  return { subject: subject.trim(), body, audience: toAudiencePayload(audience) };
+/**
+ * Plain: {subject, body, audience} (+ body_format "plain" only when converting a
+ * rich draft back to plain). Rich: {subject, body_format "rich", body_html, audience};
+ * `body` is omitted because the server generates the text fallback (D4).
+ */
+export function toDraftPayload({ subject, body, bodyFormat, bodyHtml, audience }) {
+  if (bodyFormat === "rich") {
+    return { subject: subject.trim(), body_format: "rich", body_html: bodyHtml, audience: toAudiencePayload(audience) };
+  }
+  const payload = { subject: subject.trim(), body, audience: toAudiencePayload(audience) };
+  if (bodyFormat === "plain") payload.body_format = "plain";
+  return payload;
 }
 
 /** kind: "drafts" | "history" (frozen D4 list contract); `state` narrows history to one state. */
