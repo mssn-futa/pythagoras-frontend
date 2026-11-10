@@ -24,10 +24,12 @@ export const STORAGE_STATUS_LABELS = Object.freeze({
   not_applicable: "Not applicable",
   failed: "Failed",
   pending: "Pending",
-  none: "No audio yet",
+  none: "No file yet",
 });
 
 export const AUDIO_LIMIT_BYTES = 100 * 1024 * 1024; // MP3 maximum 100 MiB
+export const DOCUMENT_LIMIT_BYTES = 20 * 1024 * 1024; // PDF/DOCX default maximum 20 MiB
+export const IMAGE_LIMIT_BYTES = 10 * 1024 * 1024; // JPEG/PNG maximum 10 MiB
 export const AUDIO_CONTENT_TYPE = "audio/mpeg";
 export const PAGE_SIZE = 20;
 export const LIST_PAGE_SIZE_MAX = 100;

@@ -40,7 +40,7 @@ const CODE_MESSAGES = {
     return `This event cannot be published yet. Fix its details first.${details ? ` ${details}` : ""}`;
   },
   EVENT_NOT_PUBLISHED: () => "Publish the event first. A resource can only be published while its event is published.",
-  MEDIA_NOT_READY: () => "The audio is not ready yet. Upload it and wait for server validation before publishing. For a video, save a valid YouTube link first.",
+  MEDIA_NOT_READY: () => "The audio is not ready yet. Upload it and wait for server validation before publishing (the same applies to a document). For a video, save a valid YouTube link first.",
   UNPUBLISH_REQUIRED: () => "Unpublish this item (and any published resources under it) before deleting it.",
   RESOURCE_REFERENCED: (error) => {
     const refs = referenceSummary(error.fields);

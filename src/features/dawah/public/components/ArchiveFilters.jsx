@@ -27,8 +27,10 @@ export default function ArchiveFilters({ values, onApply, onClear }) {
       <label className="text-sm font-medium text-[#1F2937] dark:text-white">
         Type
         <select className={`${input} mt-1`} value={draft.type} onChange={set('type')}>
+          <option value="all">All types</option>
           <option value="aud">Audio</option>
           <option value="vid">Video</option>
+          <option value="doc">Documents</option>
         </select>
       </label>
       <label className="text-sm font-medium text-[#1F2937] dark:text-white">

@@ -6,10 +6,13 @@ import ArchiveFilters from '../components/ArchiveFilters.jsx'
 import Pagination from '../components/Pagination.jsx'
 import ResourceCard from '../components/ResourceCard.jsx'
 import { EmptyState, ErrorState, LoadingState } from '../components/States.jsx'
+import EventImage from '../components/EventImage.jsx'
 import { formatDateTime } from '../lib/format.js'
 import { useRemote } from '../lib/useRemote.js'
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+// Absent `type` means audio (the established default); `all` lists every visible type.
+const ARCHIVE_TYPES = ['all', 'vid', 'doc']
 const EMPTY = { search: '', speaker: '', category: '', dateFrom: '', dateTo: '', type: 'aud' }
 
 /** URL query is the filter state, so reload/back/deep links keep it. */
@@ -22,13 +25,13 @@ function readFilters(params) {
     category: (params.get('category') ?? '').trim(),
     dateFrom: date('from'),
     dateTo: date('to'),
-    type: params.get('type') === 'vid' ? 'vid' : 'aud',
+    type: ARCHIVE_TYPES.includes(params.get('type')) ? params.get('type') : 'aud',
     page: Number.isInteger(page) && page > 0 ? page : 1,
   }
 }
 
 function toParams({ search, speaker, category, dateFrom, dateTo, type, page }) {
-  const entries = { q: search, speaker, category, from: dateFrom, to: dateTo, type: type === 'vid' ? 'vid' : '', page: page > 1 ? String(page) : '' }
+  const entries = { q: search, speaker, category, from: dateFrom, to: dateTo, type: ARCHIVE_TYPES.includes(type) ? type : '', page: page > 1 ? String(page) : '' }
   return Object.fromEntries(Object.entries(entries).filter(([, value]) => value))
 }
 
@@ -44,7 +47,8 @@ function UpcomingEvents() {
       </h2>
       <ul className="space-y-2">
         {data.results.map((event) => (
-          <li key={event.id}>
+          <li key={event.id} className="space-y-2">
+            <EventImage event={event} className="max-h-40 sm:max-w-sm" />
             <Link to={`/dawah/events/${event.id}`} className="font-medium text-[#2A742F] hover:underline dark:text-green-400">
               {event.title}
             </Link>
@@ -81,7 +85,7 @@ export default function ArchivePage() {
     <div className="mx-auto max-w-5xl space-y-6 pt-20">
       <header>
         <h1 className="text-2xl font-bold text-[#1F2937] dark:text-white">Da’wah archive</h1>
-        <p className="text-sm text-[#6B7280] dark:text-gray-300">Published khutbahs and lectures. Anyone can listen or watch.</p>
+        <p className="text-sm text-[#6B7280] dark:text-gray-300">Published khutbahs, lectures and documents. Anyone can listen, watch or read.</p>
       </header>
 
       <UpcomingEvents />
