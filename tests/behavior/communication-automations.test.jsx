@@ -22,11 +22,29 @@ beforeEach(() => {
 })
 afterEach(async () => {
   // Let in-flight loads settle so no request outlives the test (the setup file fails on unhandled requests).
-  await waitFor(() => {
+  await until(() => {
     if (screen.queryByText('Loading rule…') || screen.queryByText('Loading run history…') || screen.queryByText('Loading rules…')) throw new Error('loading')
-  }).catch(() => {})
+  }, 200).catch(() => {})
   resetSession()
 })
+
+const realSetTimeout = globalThis.setTimeout
+/** Polls an assertion; with fake timers (no auto-advance) it nudges them 1 ms per round so I/O can settle without firing poll timers. */
+async function until(assertion, rounds = 400) {
+  let last
+  for (let i = 0; i < rounds; i += 1) {
+    try {
+      return assertion()
+    } catch (error) {
+      last = error
+    }
+    await act(async () => {
+      if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(1)
+      await new Promise((resolve) => realSetTimeout(resolve, 5))
+    })
+  }
+  throw last
+}
 
 const BASE = '/admin/communication/automations'
 function open(backend, path = BASE, extra = []) {
@@ -300,16 +318,27 @@ describe('enable and disable', () => {
     expect(backend.store.get(3).enabled).toBe(false)
   })
 
-  test('invalid schedule on enable: dialog closes, field errors shown, rule stays disabled', async () => {
-    const backend = createAutomationBackend({ rules: [wireRule({ weekday: 9 })] })
-    open(backend, `${BASE}/3`)
+  test('invalid schedule rejected by the server on enable: dialog closes, errors shown, rule stays disabled', async () => {
+    const backend = createAutomationBackend({ rules: [wireRule()] })
+    open(backend, `${BASE}/3`, [
+      http.post(url('/dawah/automations/3/enable/'), () => fail(400, 'VALIDATION_ERROR', 'Correct the highlighted fields.', { local_time: ['Not a valid schedule time.'], schedule: ['The saved schedule is invalid.'] })),
+    ])
     const actor = userEvent.setup()
     await actor.click(await screen.findByRole('button', { name: 'Enable…' }))
     await actor.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Enable rule' }))
-    expect(await screen.findByText('The saved schedule is invalid.', { exact: false })).toBeVisible()
+    expect(await screen.findByText('Not a valid schedule time.')).toBeVisible()
+    expect(screen.getByRole('alert')).toHaveTextContent('The saved schedule is invalid.')
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(backend.store.get(3).enabled).toBe(false)
-    expect(screen.getAllByText('Disabled').length).toBeGreaterThan(0)
+  })
+
+  test('a saved rule that is invalid cannot be enabled client-side and the reasons are visible', async () => {
+    const backend = createAutomationBackend({ rules: [wireRule({ weekday: 9 })] })
+    open(backend, `${BASE}/3`)
+    expect(await screen.findByText('This saved rule cannot be enabled yet:')).toBeVisible()
+    expect(screen.getByText('Choose a day of the week.')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Enable…' })).toBeDisabled()
+    expect(backend.only('POST', '/enable/')).toHaveLength(0)
   })
 
   test('owner inactive: blocked wording, enable unavailable, "Assign to me" reassigns and unblocks', async () => {
@@ -348,6 +377,51 @@ describe('enable and disable', () => {
     await actor.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Enable rule' }))
     expect(await screen.findByText('This rule was changed somewhere else.')).toBeVisible()
     expect(backend.store.get(3).enabled).toBe(false)
+  })
+})
+
+describe('unsupported kind and stored timezone', () => {
+  test('an unknown rule type shows a read-only state: no form, no save/preview/enable, disable and runs allowed', async () => {
+    const backend = createAutomationBackend({ rules: [wireRule({ kind: 'monthly_digest', enabled: true })], runs: { 3: [wireRun({ state: 'completed', counts: counts({ sent: 4 }) })] } })
+    open(backend, `${BASE}/3`)
+    expect(await screen.findByText('Unsupported rule type.')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Preview/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Enable…' })).toBeNull()
+    expect(await screen.findByTestId('run-row')).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: 'Disable…' }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Disable rule' }))
+    await waitFor(() => expect(backend.store.get(3).enabled).toBe(false))
+  })
+
+  test('an unknown disabled rule cannot be enabled', async () => {
+    open(createAutomationBackend({ rules: [wireRule({ kind: 'monthly_digest' })] }), `${BASE}/3`)
+    expect(await screen.findByText('Unsupported rule type.')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Enable…' })).toBeDisabled()
+  })
+
+  test('a stored non-Lagos timezone is shown, blocks saving until explicitly changed, then saves Africa/Lagos', async () => {
+    const backend = createAutomationBackend({ rules: [wireRule({ timezone: 'Europe/London' })] })
+    open(backend, `${BASE}/3`)
+    const actor = userEvent.setup()
+    expect((await screen.findAllByText('Europe/London', { selector: 'strong' })).length).toBeGreaterThan(0)
+    expect(screen.getByTestId('timezone-note')).toHaveTextContent('Europe/London')
+    await actor.type(screen.getByLabelText('Subject'), '!')
+    await actor.click(screen.getByRole('button', { name: 'Save changes' }))
+    // Shown under the schedule field and, because the saved rule is invalid, in the enable-blocked reasons.
+    expect((await screen.findAllByText(/Change it to Africa\/Lagos explicitly before saving/)).length).toBe(2)
+    expect(backend.only('PATCH')).toHaveLength(0)
+    await actor.click(screen.getByRole('button', { name: 'Change to Africa/Lagos' }))
+    await actor.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(backend.only('PATCH')).toHaveLength(1))
+    expect(backend.only('PATCH')[0].body.timezone).toBe('Africa/Lagos')
+  })
+
+  test('the explicit timezone change alone makes the form dirty (saveable)', async () => {
+    open(createAutomationBackend({ rules: [wireRule({ timezone: 'Europe/London' })] }), `${BASE}/3`)
+    expect(screen.queryByRole('button', { name: 'Change to Africa/Lagos' })).toBeNull()
+    await userEvent.click(await screen.findByRole('button', { name: 'Change to Africa/Lagos' }))
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled()
   })
 })
 
@@ -422,7 +496,7 @@ describe('run history', () => {
     expectIn('r:cancelled', 'Cancelled', 'Reason code: source_rescheduled')
     expect(within(row('r:cancelled')).getByText(/Event: Usroh, starts 12 Nov 2026, 17:00 \(Lagos\) \(schedule revision 2\)/)).toBeVisible()
     expectIn('r:blocked', 'Blocked: owner', 'Reason code: owner_inactive')
-    expectIn('r:failed', 'Failed (provider)', 'Reason code: provider_rejected')
+    expectIn('r:failed', 'Failed', 'Reason code: provider_rejected')
     expectIn('r:uncertain', 'Uncertain delivery', 'Reason code: delivery_uncertain')
     expectIn('r:done', 'Completed')
     expect(within(row('r:weird')).getByText('Unrecognised state: exploded')).toBeVisible()
@@ -455,21 +529,21 @@ describe('run history', () => {
 })
 
 describe('run polling', () => {
-  beforeEach(() => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true }))
+  beforeEach(() => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: false }))
   const runCalls = (backend) => backend.only('GET', '/runs/').length
   const queued = () => wireRun({ id: 1, state: 'queued' })
 
   test('polls while a run is outstanding and stops at the terminal state', async () => {
     const backend = createAutomationBackend({ rules: [wireRule({ enabled: true })], runs: { 3: [queued()] } })
     open(backend, `${BASE}/3`)
-    await screen.findByTestId('run-row')
+    await until(() => screen.getByTestId('run-row'))
     expect(runCalls(backend)).toBe(1)
     expect(screen.getByText('Updating automatically while runs are outstanding.')).toBeVisible()
     await act(() => vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS))
-    await waitFor(() => expect(runCalls(backend)).toBe(2))
+    await until(() => expect(runCalls(backend)).toBe(2))
     backend.setRuns(3, [wireRun({ id: 1, state: 'completed', counts: counts({ sent: 4 }) })])
     await act(() => vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS))
-    expect(await screen.findByText('Completed')).toBeVisible()
+    await until(() => expect(screen.getByText('Completed')).toBeVisible())
     const settled = runCalls(backend)
     await act(() => vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 10))
     expect(runCalls(backend)).toBe(settled)
@@ -479,7 +553,7 @@ describe('run polling', () => {
   test('never polls when every run is already terminal or there are none', async () => {
     const backend = createAutomationBackend({ rules: [wireRule({ enabled: true })], runs: { 3: [wireRun({ state: 'skipped', reason_code: 'no_recipients', broadcast_id: null })] } })
     open(backend, `${BASE}/3`)
-    await screen.findByTestId('run-row')
+    await until(() => screen.getByTestId('run-row'))
     await act(() => vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 10))
     expect(runCalls(backend)).toBe(1)
   })
@@ -487,9 +561,9 @@ describe('run polling', () => {
   test('stops at unmount', async () => {
     const backend = createAutomationBackend({ rules: [wireRule({ enabled: true })], runs: { 3: [queued()] } })
     const { unmount } = open(backend, `${BASE}/3`)
-    await screen.findByTestId('run-row')
+    await until(() => screen.getByTestId('run-row'))
     await act(() => vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS))
-    await waitFor(() => expect(runCalls(backend)).toBe(2))
+    await until(() => expect(runCalls(backend)).toBe(2))
     unmount()
     await act(() => vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 10))
     expect(runCalls(backend)).toBe(2)
@@ -498,9 +572,9 @@ describe('run polling', () => {
   test('after the bound it pauses with a manual refresh', async () => {
     const backend = createAutomationBackend({ rules: [wireRule({ enabled: true })], runs: { 3: [queued()] } })
     open(backend, `${BASE}/3`)
-    await screen.findByTestId('run-row')
+    await until(() => screen.getByTestId('run-row'))
     for (let i = 0; i < POLL_MAX_POLLS; i += 1) await act(() => vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS))
-    expect(await screen.findByText('Automatic updates paused.')).toBeVisible()
+    await until(() => expect(screen.getByText('Automatic updates paused.')).toBeVisible())
     const calls = runCalls(backend)
     await act(() => vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 5))
     expect(runCalls(backend)).toBe(calls)

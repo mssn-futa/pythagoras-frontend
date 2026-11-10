@@ -108,8 +108,14 @@ export default function RuleFormFields({ form, onChange, errors, disabled, kindL
             </div>
           </div>
           <p className="mt-2 text-sm text-gray-700 dark:text-gray-200" data-testid="timezone-note">
-            Time zone: <strong>{TIMEZONE_LABEL}</strong>. Every occurrence is scheduled in {TIMEZONE} time, whatever your device's clock says. The summary covers the seven days before the occurrence.
+            Time zone: <strong>{form.timezone === TIMEZONE ? TIMEZONE_LABEL : form.timezone}</strong>. Every occurrence is scheduled in {form.timezone} time, whatever your device's clock says. The summary covers the seven days before the occurrence.
           </p>
+          {form.timezone !== TIMEZONE && (
+            <div role="alert" className={`${amberBox} mt-2`}>
+              <p>This rule is stored with time zone <strong>{form.timezone}</strong>. Saving is blocked until you change it explicitly; it is never replaced silently.</p>
+              <button type="button" className={`${secondaryButton} mt-2`} onClick={() => onChange({ timezone: TIMEZONE })}>Change to {TIMEZONE}</button>
+            </div>
+          )}
           <Err errors={errors.timezone} />
         </fieldset>
       ) : (

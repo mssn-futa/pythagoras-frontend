@@ -15,8 +15,8 @@ const TONES = {
   red: "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300",
 };
 
-export function RunStateBadge({ state }) {
-  const { label, tone } = runStateText(state);
+export function RunStateBadge({ state, reasonCode }) {
+  const { label, tone } = runStateText(state, reasonCode);
   return <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${TONES[tone] ?? TONES.gray}`}>{label}</span>;
 }
 
@@ -28,14 +28,14 @@ function CountsText({ run }) {
 }
 
 function RunRow({ run }) {
-  const help = runStateText(run.state).help;
+  const help = runStateText(run.state, run.reasonCode).help;
   const reason = run.reasonCode ? reasonText(run.reasonCode) : null;
   return (
     <tr className="border-t border-gray-200 align-top dark:border-gray-700" data-testid="run-row">
       <td className="break-all py-2 pr-3 font-mono text-xs">{run.occurrenceKey}</td>
       <td className="whitespace-nowrap py-2 pr-3 text-sm">{formatLagos(run.scheduledAt)}</td>
       <td className="py-2 pr-3">
-        <RunStateBadge state={run.state} />
+        <RunStateBadge state={run.state} reasonCode={run.reasonCode} />
         <span className="mt-1 block text-xs text-gray-600 dark:text-gray-300">{help}</span>
       </td>
       <td className="py-2 pr-3 text-xs text-gray-700 dark:text-gray-200">

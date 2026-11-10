@@ -3,7 +3,7 @@ import {
   createRule, disableRule, enableRule, listRuns, normalizeRule, normalizeRun, previewRule, reassignRule, toRulePayload, updateRule,
 } from '../../src/features/communication/api/automationsApi.js'
 import {
-  EMPTY_RULE_FORM, formToDraft, minutesToOffset, offsetLabel, offsetToMinutes, ruleStatus, ruleToForm, runStateText, scanPlaceholders, scheduleSummary, validateRuleForm,
+  EMPTY_RULE_FORM, formToDraft, minutesToOffset, offsetLabel, offsetToMinutes, ruleFormKey, ruleStatus, ruleToForm, runStateText, scanPlaceholders, scheduleSummary, validateRuleForm,
 } from '../../src/features/communication/automations/automationModel.js'
 import { useApiOrigin } from '../fixtures/auth.js'
 import { createAutomationBackend, wireRule, wireRun } from '../fixtures/automations.js'
@@ -106,6 +106,28 @@ describe('rule mapping', () => {
     const form = ruleToForm(rule)
     expect(form).toMatchObject({ offsetValue: '2', offsetUnit: 'hours', categories: ['usroh', 'jumuah'] })
     expect(formToDraft(form).offsetMinutes).toBe(120)
+  })
+
+  test('weekly round trip keeps a non-zero weekday, time and stored timezone', () => {
+    const rule = normalizeRule(wireRule({ weekday: 4, local_time: '17:15:00' }))
+    const form = ruleToForm(rule)
+    expect(form).toMatchObject({ weekday: '4', localTime: '17:15', timezone: 'Africa/Lagos' })
+    expect(formToDraft(form)).toMatchObject({ weekday: 4, localTime: '17:15', timezone: 'Africa/Lagos' })
+    expect(toRulePayload(formToDraft(form))).toMatchObject({ weekday: 4, local_time: '17:15', timezone: 'Africa/Lagos' })
+    const odd = ruleToForm(normalizeRule(wireRule({ timezone: 'Europe/London' })))
+    expect(odd.timezone).toBe('Europe/London')
+    expect(validateRuleForm({ ...odd, subject: 'S', body: 'b' })).toHaveProperty('timezone')
+    expect(validateRuleForm({ ...odd, timezone: 'Africa/Lagos', subject: 'S', body: 'b' })).toEqual({})
+    expect(ruleFormKey(odd)).not.toBe(ruleFormKey({ ...odd, timezone: 'Africa/Lagos' }))
+  })
+
+  test('failed runs say Failed; provider wording only for provider reason codes; completed makes no inbox claim', () => {
+    expect(runStateText('failed').label).toBe('Failed')
+    expect(runStateText('failed').help).not.toMatch(/provider/i)
+    expect(runStateText('failed', 'no_recipients').help).not.toMatch(/provider/i)
+    expect(runStateText('failed', 'provider_rejected').help).toMatch(/provider did not accept/)
+    expect(runStateText('failed', 'provider_failure').help).toMatch(/provider did not accept/)
+    expect(runStateText('completed').help).toBe('Finished with no failed or uncertain messages; see counts.')
   })
 
   test('unknown audience/kind never default to something that looks operational', () => {

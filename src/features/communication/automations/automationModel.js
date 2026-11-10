@@ -55,9 +55,9 @@ const RUN_STATE_TEXT = {
   pending: { label: "Being prepared", tone: "blue", help: "The occurrence was found due and is being materialized. No mail has been handed off yet." },
   queued: { label: "Queued", tone: "blue", help: "A broadcast was created for this occurrence. Delivery is pending; nothing is confirmed yet." },
   processing: { label: "Sending in progress", tone: "blue", help: "Messages are being handed to Resend." },
-  completed: { label: "Completed", tone: "green", help: "Every recipient was accepted by Resend. That is not confirmation that mail reached an inbox." },
+  completed: { label: "Completed", tone: "green", help: "Finished with no failed or uncertain messages; see counts." },
   completed_with_errors: { label: "Completed with failures", tone: "amber", help: "Some recipients were not accepted by Resend; see the broadcast for per-recipient outcomes." },
-  failed: { label: "Failed (provider)", tone: "red", help: "The email provider did not accept this occurrence's mail. Open the broadcast for the safe error codes." },
+  failed: { label: "Failed", tone: "red", help: "This occurrence failed. See the reason code and, when a broadcast exists, its per-recipient outcomes." },
   uncertain: { label: "Uncertain delivery", tone: "red", help: "Whether the provider accepted some mail could not be determined. Investigate before any resend; do not assume it was or was not sent." },
   skipped: { label: "Skipped (nothing sent)", tone: "gray", help: "The run was recorded but no email was created." },
   missed: { label: "Missed (not sent)", tone: "amber", help: "The occurrence was not processed inside its catch-up window and was not replayed." },
@@ -65,7 +65,14 @@ const RUN_STATE_TEXT = {
   blocked: { label: "Blocked: owner", tone: "amber", help: "The rule owner was not an active admin, so this occurrence was not created." },
 };
 
-export const runStateText = (state) => RUN_STATE_TEXT[state] ?? { label: `Unrecognised state: ${state}`, tone: "gray", help: "This state is not known to this page. Nothing is assumed about whether mail was sent." };
+const PROVIDER_REASONS = ["provider_rejected", "provider_failure"];
+const PROVIDER_FAILED_HELP = "The email provider did not accept this occurrence's mail. Open the broadcast for the safe error codes.";
+
+/** Provider wording is used for a failed run only when its reason code says the provider was the cause. */
+export const runStateText = (state, reasonCode = null) =>
+  state === "failed" && PROVIDER_REASONS.includes(reasonCode)
+    ? { ...RUN_STATE_TEXT.failed, help: PROVIDER_FAILED_HELP }
+    : RUN_STATE_TEXT[state] ?? { label: `Unrecognised state: ${state}`, tone: "gray", help: "This state is not known to this page. Nothing is assumed about whether mail was sent." };
 
 // ASSUMPTION: reason_code values are not enumerated in D4; unknown codes are shown verbatim.
 const REASON_TEXT = {
@@ -91,6 +98,7 @@ export function scheduleSummary(rule) {
   if (rule.kind === "weekly_digest") {
     return `${WEEKDAYS[rule.weekday] ?? "Unknown day"} at ${rule.localTime || "—"} (${rule.timezone || TIMEZONE})`;
   }
+  if (rule.kind !== "event_reminder") return "Unknown schedule";
   return `${offsetLabel(rule.offsetMinutes)} before the event starts`;
 }
 
@@ -138,6 +146,7 @@ export const EMPTY_RULE_FORM = Object.freeze({
   localTime: "08:00", // D4 weekly default: Monday 08:00 Africa/Lagos
   offsetValue: "24",
   offsetUnit: "hours", // D4 reminder default: 24 hours before
+  timezone: TIMEZONE,
 });
 
 export function ruleToForm(rule) {
@@ -153,6 +162,8 @@ export function ruleToForm(rule) {
     department: rule.audience.department,
     level: rule.audience.level,
     categories: [...rule.categories],
+    // The stored zone is carried as-is so an unsupported one is shown and never silently replaced on save.
+    timezone: rule.timezone || TIMEZONE,
     weekday: rule.weekday == null ? "0" : String(rule.weekday),
     localTime: rule.localTime || "08:00",
     offsetValue: offset.value || "24",
@@ -168,7 +179,7 @@ export function formToDraft(form) {
     categories: [...form.categories],
     template: { subject: form.subject, bodyFormat: form.bodyFormat === "rich" ? "rich" : "plain", body: form.body, bodyHtml: form.bodyHtml },
   };
-  if (form.kind === "weekly_digest") Object.assign(draft, { timezone: TIMEZONE, weekday: Number(form.weekday), localTime: form.localTime });
+  if (form.kind === "weekly_digest") Object.assign(draft, { timezone: form.timezone, weekday: Number(form.weekday), localTime: form.localTime });
   else draft.offsetMinutes = offsetToMinutes(form.offsetValue, form.offsetUnit);
   return draft;
 }
@@ -182,7 +193,7 @@ export const ruleFormKey = (form) =>
     form.audienceType === "department" ? form.department.trim() : "",
     form.audienceType === "level" ? form.level : "",
     [...form.categories].sort(),
-    form.kind === "weekly_digest" ? [form.weekday, form.localTime] : [form.offsetValue.trim(), form.offsetUnit],
+    form.kind === "weekly_digest" ? [form.weekday, form.localTime, form.timezone] : [form.offsetValue.trim(), form.offsetUnit],
   ]);
 
 /** Names inside {{ ... }}; `invalid` lists anything that is template code rather than a plain placeholder. */
@@ -226,6 +237,7 @@ export function validateRuleForm(form) {
   else if (form.audienceType === "level" && !LEVELS.includes(form.level)) errors.audience = ["Choose a level."];
 
   if (form.kind === "weekly_digest") {
+    if (form.timezone !== TIMEZONE) errors.timezone = [`This rule is stored with time zone ${form.timezone}, which this page cannot confirm. Change it to ${TIMEZONE} explicitly before saving.`];
     if (!/^[0-6]$/.test(form.weekday)) errors.weekday = ["Choose a day of the week."];
     if (!TIME_PATTERN.test(form.localTime)) errors.local_time = ["Enter a time as HH:MM (24-hour), for example 08:00."];
   } else {

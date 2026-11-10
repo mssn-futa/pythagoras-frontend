@@ -197,6 +197,10 @@ function Editor({ id }) {
   const saved = Boolean(rule) && !dirty && !conflict;
   const state = rule ? ruleStatus(rule) : null;
   const blocked = state?.key === "blocked";
+  const unsupported = rule?.kind === "unknown";
+  // The saved version must itself be valid before it can be enabled; reasons are listed next to the button.
+  const savedErrors = rule && !unsupported ? validateRuleForm(ruleToForm(rule)) : {};
+  const savedProblems = Object.values(savedErrors).flat();
 
   return (
     <div className="space-y-6">
@@ -229,13 +233,29 @@ function Editor({ id }) {
             {rule.enabled ? (
               <button type="button" className={secondaryButton} onClick={() => { setLifecycleError(null); setDialog("disable"); }} disabled={conflict}>Disable…</button>
             ) : (
-              <button type="button" className={primaryButton} onClick={() => { setLifecycleError(null); setDialog("enable"); }} disabled={!saved || blocked}>Enable…</button>
+              <button type="button" className={primaryButton} onClick={() => { setLifecycleError(null); setDialog("enable"); }} disabled={!saved || blocked || unsupported || savedProblems.length > 0}>Enable…</button>
             )}
           </div>
+          {!rule.enabled && savedProblems.length > 0 && (
+            <div role="status" className={amberBox}>
+              <p className="font-medium">This saved rule cannot be enabled yet:</p>
+              <ul className="mt-1 list-disc pl-5">
+                {savedProblems.map((problem) => (
+                  <li key={problem}>{problem}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           {!rule.enabled && !saved && !conflict && <p className="text-xs text-gray-500">Save your changes before enabling. Enabling applies the saved version, never unsaved edits.</p>}
         </section>
       )}
 
+      {unsupported ? (
+        <div role="alert" className={amberBox}>
+          <p className="font-medium">Unsupported rule type.</p>
+          <p className="mt-1">This page does not recognise this rule's type, so it cannot be edited, previewed or enabled here. {rule.enabled ? "You can still disable it and review its run history." : "Its run history is shown below."}</p>
+        </div>
+      ) : (
       <form onSubmit={save} noValidate className={`${cardClass} space-y-4`} aria-labelledby={`${formId}-title`}>
         <h2 id={`${formId}-title`} className="text-lg font-semibold text-[#1F2937] dark:text-white">{rule ? "Edit rule" : "New automation rule"}</h2>
         {!rule && <p className="text-sm text-gray-600 dark:text-gray-300">The rule is saved <strong>disabled</strong>. Saving does not schedule or send anything; you enable it explicitly afterwards.</p>}
@@ -260,6 +280,7 @@ function Editor({ id }) {
         </div>
         {!saved && !conflict && <p className="text-xs text-gray-500">Save the rule to preview it. The preview uses the saved version.</p>}
       </form>
+      )}
 
       {activePreview && <RulePreview preview={activePreview} />}
       {rule && <RunHistory ruleId={rule.id} refreshKey={runsKey} />}
