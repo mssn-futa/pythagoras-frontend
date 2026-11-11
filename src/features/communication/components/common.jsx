@@ -15,7 +15,7 @@ const TONES = {
 };
 
 function Badge({ tone, children }) {
-  return <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${TONES[tone] ?? TONES.gray}`}>{children}</span>;
+  return <span className={`inline-block whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium ${TONES[tone] ?? TONES.gray}`}>{children}</span>;
 }
 
 export function BroadcastStateBadge({ state }) {
