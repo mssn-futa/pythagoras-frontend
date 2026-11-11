@@ -3,14 +3,17 @@
  * Mounted at /admin/* inside AdminLayout, behind RequireAdmin (see src/App.jsx).
  * Also mounts the Arabic class / module / roster admin (/admin/classes, ASSESS-08).
  */
-import ClassEditorPage from "./admin/classes/pages/ClassEditorPage.jsx";
-import ClassListPage from "./admin/classes/pages/ClassListPage.jsx";
-import ModuleEditorPage from "./admin/classes/pages/ModuleEditorPage.jsx";
-import ModuleListPage from "./admin/classes/pages/ModuleListPage.jsx";
-import RosterPage from "./admin/classes/pages/RosterPage.jsx";
-import QuizEditorPage from "./admin/pages/QuizEditorPage.jsx";
-import QuizListPage from "./admin/pages/QuizListPage.jsx";
-import QuizResultsPage from "./admin/pages/QuizResultsPage.jsx";
+import { lazy } from "react";
+
+// Route-level code splitting (PLAT-07): each page is its own chunk, loaded on first visit.
+const ClassEditorPage = lazy(() => import("./admin/classes/pages/ClassEditorPage.jsx"));
+const ClassListPage = lazy(() => import("./admin/classes/pages/ClassListPage.jsx"));
+const ModuleEditorPage = lazy(() => import("./admin/classes/pages/ModuleEditorPage.jsx"));
+const ModuleListPage = lazy(() => import("./admin/classes/pages/ModuleListPage.jsx"));
+const RosterPage = lazy(() => import("./admin/classes/pages/RosterPage.jsx"));
+const QuizEditorPage = lazy(() => import("./admin/pages/QuizEditorPage.jsx"));
+const QuizListPage = lazy(() => import("./admin/pages/QuizListPage.jsx"));
+const QuizResultsPage = lazy(() => import("./admin/pages/QuizResultsPage.jsx"));
 
 export const assessmentAdminRoutes = [
   { path: "quizzes", element: <QuizListPage /> },

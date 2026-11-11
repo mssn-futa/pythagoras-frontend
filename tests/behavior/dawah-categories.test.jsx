@@ -91,8 +91,9 @@ describe('public category display and filter', () => {
         ok(page([audio(8), audio(9, { event: { ...audio(9).event, category: 'Halaqah' } })])),
     })
     render(<TestApp path="/dawah" />)
-    expect(await screen.findAllByText(/Jumu'ah/)).not.toHaveLength(0)
-    expect(screen.getAllByText(/Halaqah/)).not.toHaveLength(0)
+    // Wait for the cards themselves: the category filter's options render before the list loads.
+    expect(await screen.findAllByText(/Halaqah/)).not.toHaveLength(0)
+    expect(screen.getAllByText(/Jumu'ah/)).not.toHaveLength(0)
     expect(screen.queryByText(/jumuah/)).not.toBeInTheDocument()
   })
 

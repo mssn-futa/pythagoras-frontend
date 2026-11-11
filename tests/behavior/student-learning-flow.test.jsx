@@ -140,7 +140,8 @@ describe('enrollment', () => {
     openAt('/dawah/classes/99', backend)
     expect(await screen.findByRole('alert')).toHaveTextContent('This class or module is not available. It may not be published or may have been closed.')
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
-    expect(screen.queryByText(/quiz/i)).toBeNull()
+    // Page content only: the global navigation legitimately links to Quizzes (PLAT-07).
+    expect(within(screen.getByRole('main')).queryByText(/quiz/i)).toBeNull()
   })
 })
 

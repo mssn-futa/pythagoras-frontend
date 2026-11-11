@@ -7,6 +7,7 @@ import { act } from '@testing-library/react'
 import { fail, ok, recorder, resetSession, sessionHandlers, storeRefreshToken, url, useApiOrigin } from '../fixtures/auth.js'
 import { TestApp } from '../fixtures/TestApp.jsx'
 import { page, quizHandler, rawAttempt, rawQuiz, rawResult } from '../fixtures/assessments.js'
+import { studentDashboardHandlers } from '../fixtures/dashboard.js'
 
 configure({ asyncUtilTimeout: 5000 })
 vi.setConfig({ testTimeout: 20000 })
@@ -463,7 +464,9 @@ describe('re-sync on visibility, focus and online', () => {
 describe('submit edge cases', () => {
   test('a submit that resolves after the student navigated away does not navigate back', async () => {
     openAt('/dawah/attempts/123', quizHandler.attempt(),
-      http.post(url('/quiz/submissions/'), async () => { await delay(500); return ok(rawResult()) }))
+      http.post(url('/quiz/submissions/'), async () => { await delay(500); return ok(rawResult()) }),
+      // "/" is the live student dashboard (PLAT-07); answer its sources.
+      ...studentDashboardHandlers().handlers)
     const actor = userEvent.setup()
     await actor.click(await screen.findByRole('button', { name: 'Review' }))
     await actor.click(screen.getByRole('button', { name: 'Confirm and submit' }))

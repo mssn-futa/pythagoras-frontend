@@ -1,10 +1,16 @@
-import AutomationRulePage from "./pages/AutomationRulePage.jsx";
-import AutomationsPage from "./pages/AutomationsPage.jsx";
-import BroadcastDetailPage from "./pages/BroadcastDetailPage.jsx";
+import { lazy, Suspense } from "react";
+import { RouteLoading } from "../../routes/RouteBoundary.jsx";
 import CommunicationLayout from "./pages/CommunicationLayout.jsx";
-import ComposePage from "./pages/ComposePage.jsx";
-import DraftsPage from "./pages/DraftsPage.jsx";
-import HistoryPage from "./pages/HistoryPage.jsx";
+
+// Route-level code splitting (PLAT-07): each tab page is its own chunk, loaded on first visit.
+// The tab shell stays eager; tab pages suspend inside it so the tabs do not flash.
+const tab = (page) => <Suspense fallback={<RouteLoading />}>{page}</Suspense>;
+const AutomationRulePage = lazy(() => import("./pages/AutomationRulePage.jsx"));
+const AutomationsPage = lazy(() => import("./pages/AutomationsPage.jsx"));
+const BroadcastDetailPage = lazy(() => import("./pages/BroadcastDetailPage.jsx"));
+const ComposePage = lazy(() => import("./pages/ComposePage.jsx"));
+const DraftsPage = lazy(() => import("./pages/DraftsPage.jsx"));
+const HistoryPage = lazy(() => import("./pages/HistoryPage.jsx"));
 
 /**
  * Communication route slot (D4). Mounted by App at /admin/* inside AdminLayout,
@@ -17,14 +23,14 @@ export const communicationRoutes = [
     path: "communication",
     element: <CommunicationLayout />,
     children: [
-      { index: true, element: <ComposePage /> },
-      { path: "drafts", element: <DraftsPage /> },
-      { path: "drafts/:id", element: <ComposePage /> },
-      { path: "history", element: <HistoryPage /> },
-      { path: "history/:id", element: <BroadcastDetailPage /> },
-      { path: "automations", element: <AutomationsPage /> },
-      { path: "automations/new", element: <AutomationRulePage /> },
-      { path: "automations/:id", element: <AutomationRulePage /> },
+      { index: true, element: tab(<ComposePage />) },
+      { path: "drafts", element: tab(<DraftsPage />) },
+      { path: "drafts/:id", element: tab(<ComposePage />) },
+      { path: "history", element: tab(<HistoryPage />) },
+      { path: "history/:id", element: tab(<BroadcastDetailPage />) },
+      { path: "automations", element: tab(<AutomationsPage />) },
+      { path: "automations/new", element: tab(<AutomationRulePage />) },
+      { path: "automations/:id", element: tab(<AutomationRulePage />) },
     ],
   },
 ];

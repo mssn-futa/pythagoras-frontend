@@ -1,9 +1,12 @@
-import ContentPage from "./admin/pages/ContentPage.jsx";
-import EventDetailPage from "./admin/pages/EventDetailPage.jsx";
-import EventFormPage from "./admin/pages/EventFormPage.jsx";
-import EventsListPage from "./admin/pages/EventsListPage.jsx";
-import ResourceFormPage from "./admin/pages/ResourceFormPage.jsx";
-import ResourcePage from "./admin/pages/ResourcePage.jsx";
+import { lazy } from "react";
+
+// Route-level code splitting (PLAT-07): each page is its own chunk, loaded on first visit.
+const ContentPage = lazy(() => import("./admin/pages/ContentPage.jsx"));
+const EventDetailPage = lazy(() => import("./admin/pages/EventDetailPage.jsx"));
+const EventFormPage = lazy(() => import("./admin/pages/EventFormPage.jsx"));
+const EventsListPage = lazy(() => import("./admin/pages/EventsListPage.jsx"));
+const ResourceFormPage = lazy(() => import("./admin/pages/ResourceFormPage.jsx"));
+const ResourcePage = lazy(() => import("./admin/pages/ResourcePage.jsx"));
 
 /**
  * Da'wah admin route slot (D2: /admin/events, /admin/content, ...).
