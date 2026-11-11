@@ -233,6 +233,11 @@ function QuizEditor({ id }) {
   const draftWithHistory = contentLocked && isDraft;
   const readOnlyGrading = contentLocked || unknownStatus;
   const lockAll = unknownStatus;
+  // Editing a field clears its own stale error (the rest stay until the next save).
+  const edit = (name, value) => {
+    setForm({ ...form, [name]: value });
+    setFieldErrors((current) => (current[name] ? Object.fromEntries(Object.entries(current).filter(([key]) => key !== name)) : current));
+  };
   const fieldProps = (name) => ({
     "aria-invalid": Boolean(fieldErrors[name]),
     "aria-describedby": fieldErrors[name] ? `${name}-error` : undefined,
@@ -286,7 +291,7 @@ function QuizEditor({ id }) {
               id="quiz-title"
               value={form.title}
               disabled={lockAll}
-              onChange={(event) => setForm({ ...form, title: event.target.value })}
+              onChange={(event) => edit("title", event.target.value)}
               className={inputClass(fieldErrors.title)}
               {...fieldProps("title")}
             />
@@ -301,7 +306,7 @@ function QuizEditor({ id }) {
               rows={3}
               value={form.description}
               disabled={lockAll}
-              onChange={(event) => setForm({ ...form, description: event.target.value })}
+              onChange={(event) => edit("description", event.target.value)}
               className={`${inputClass(fieldErrors.description)} resize-none`}
               {...fieldProps("description")}
             />
@@ -316,7 +321,7 @@ function QuizEditor({ id }) {
               inputMode="numeric"
               value={form.time_limit}
               disabled={readOnlyGrading}
-              onChange={(event) => setForm({ ...form, time_limit: event.target.value })}
+              onChange={(event) => edit("time_limit", event.target.value)}
               className={inputClass(fieldErrors.time_limit)}
               {...fieldProps("time_limit")}
             />
@@ -331,7 +336,7 @@ function QuizEditor({ id }) {
               type="datetime-local"
               value={form.deadline}
               disabled={readOnlyGrading}
-              onChange={(event) => setForm({ ...form, deadline: event.target.value })}
+              onChange={(event) => edit("deadline", event.target.value)}
               className={inputClass(fieldErrors.deadline)}
               {...fieldProps("deadline")}
             />
@@ -342,7 +347,7 @@ function QuizEditor({ id }) {
             <RelatedCourseSelect
               value={form.related_course}
               disabled={readOnlyGrading}
-              onChange={(value) => setForm({ ...form, related_course: value })}
+              onChange={(value) => edit("related_course", value)}
               error={errorText("related_course")}
             />
           </div>

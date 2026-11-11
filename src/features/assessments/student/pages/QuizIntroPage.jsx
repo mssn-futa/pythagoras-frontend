@@ -1,16 +1,19 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { getQuiz, startAttempt } from "../api/studentAssessmentsApi.js";
+import { findSubmissionForQuiz, getQuiz, startAttempt } from "../api/studentAssessmentsApi.js";
 import { ErrorPanel, Loading, Page } from "../components/StateBlocks.jsx";
 import { useLoad } from "../hooks/useLoad.js";
-import { formatLagos, pluralize } from "../lib/format.js";
+import { describeSubmitted, formatLagos, pluralize } from "../lib/format.js";
 import { cardClass, describeAssessmentError, headingClass, mutedClass, primaryButton, secondaryButton } from "../lib/ui.js";
 
 /** /dawah/quizzes/:id — instructions and consequences before the attempt starts. */
 export default function QuizIntroPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { loading, data: quiz, error, reload } = useLoad(() => getQuiz(id), id);
+  const { loading, data: quiz, error, reload } = useLoad(async () => {
+    const [loaded, submission] = await Promise.all([getQuiz(id), findSubmissionForQuiz(id)]);
+    return { ...loaded, submission };
+  }, id);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState(null);
 
@@ -85,10 +88,21 @@ export default function QuizIntroPage() {
             {describeAssessmentError(startError)}
           </p>
         )}
+        {quiz.submission && (
+          <p role="status" className="mt-4 rounded-lg bg-green-50 px-4 py-3 text-sm font-medium text-[#1F5A24] dark:bg-green-900/30 dark:text-green-300">
+            {describeSubmitted(quiz.submission)}. You have already submitted this quiz.
+          </p>
+        )}
         <div className="mt-6 flex flex-wrap gap-3">
-          <button type="button" className={primaryButton} onClick={start} disabled={starting}>
-            {starting ? "Starting…" : startError ? "Try starting again" : "Start or continue quiz"}
-          </button>
+          {quiz.submission ? (
+            <Link to={`/profile/results/${quiz.submission.id}`} className={primaryButton}>
+              View result
+            </Link>
+          ) : (
+            <button type="button" className={primaryButton} onClick={start} disabled={starting}>
+              {starting ? "Starting…" : startError ? "Try starting again" : "Start or continue quiz"}
+            </button>
+          )}
           <Link to="/dawah/quizzes" className={secondaryButton}>
             Back to quizzes
           </Link>

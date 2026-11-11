@@ -565,6 +565,13 @@ describe('roster', () => {
     expect(screen.getByText(/roster is read-only/)).toBeVisible()
   })
 
+  test('the enroll search is introduced by its own heading, distinct from the roster filter', async () => {
+    const backend = createClassBackend({ classes: [arabicClass({ status: 'published' })], enrollments: roster(), students })
+    open('/admin/classes/2/roster', backend)
+    expect(await screen.findByRole('heading', { name: 'Add a student to this class' })).toBeVisible()
+    expect(screen.getByLabelText('Search students')).toHaveAttribute('placeholder', 'Filter roster by name or email')
+  })
+
   test('enrolls a found student through the D1 student list', async () => {
     const backend = createClassBackend({ classes: [arabicClass({ status: 'published' })], enrollments: roster(), students })
     open('/admin/classes/2/roster', backend)
