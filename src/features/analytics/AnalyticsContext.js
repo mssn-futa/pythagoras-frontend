@@ -2,7 +2,7 @@ import { createContext, useContext, useSyncExternalStore } from "react";
 
 export const AnalyticsContext = createContext(null);
 
-const DISABLED = Object.freeze({ enabled: false, choice: "unset", optOutSignal: false, active: false, scriptStatus: "idle" });
+const DISABLED = Object.freeze({ enabled: false, choice: "unset", optOutSignal: false, active: false, scriptStatus: "idle", withdrawnByReload: false });
 const subscribeNone = () => () => {};
 const disabledSnapshot = () => DISABLED;
 

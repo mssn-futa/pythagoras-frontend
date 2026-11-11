@@ -62,42 +62,53 @@ test('no Google request before consent; sanitized page views only after Accept; 
 
   await page.getByRole('link', { name: 'Patience', exact: true }).click() // /dawah/content/8
   await expect(page).toHaveURL(`${BASE}/dawah/content/8`)
-  await expect.poll(() => google.hits.length).toBe(1)
+  await expect.poll(() => google.views().length).toBe(1)
   await page.getByRole('link', { name: 'Back to archive' }).click()
-  await expect.poll(() => google.hits.length).toBe(2)
+  await expect.poll(() => google.views().length).toBe(2)
   await page.goBack() // popstate navigation, no reload
-  await expect.poll(() => google.hits.length).toBe(3)
+  await expect.poll(() => google.views().length).toBe(3)
   await settle(page)
 
   const origin = new URL(baseURL).origin
-  expect(google.hits.map(({ en, dl, dt, dr }) => ({ en, dl, dt, dr }))).toEqual([
+  expect(google.views().map(({ en, dl, dt, dr }) => ({ en, dl, dt, dr }))).toEqual([
     { en: 'page_view', dl: `${origin}/dawah/content/:id`, dt: 'Content details', dr: `${origin}/dawah` },
     { en: 'page_view', dl: `${origin}/dawah`, dt: "Da'wah archive", dr: `${origin}/dawah/content/:id` },
     { en: 'page_view', dl: `${origin}/dawah/content/:id`, dt: 'Content details', dr: `${origin}/dawah` },
   ])
+  // The stub's enhanced-measurement-like history hits (push, push, popstate) only ever saw templates.
+  expect(google.probes().map(({ dl }) => dl)).toEqual([`${origin}/dawah/content/:id`, `${origin}/dawah`, `${origin}/dawah/content/:id`])
   expect(leaks(google.hits.map(({ dl, dt, dr }) => [dl.replace(origin, ''), dt, dr.replace(origin, '')]))).toBe(false)
   expect(google.scripts()).toHaveLength(1)
 
-  // Withdraw from the privacy settings: GA cookies expire, no further hits, no reload loop.
-  await context.addCookies([{ name: '_ga', value: 'GA1.1.123.456', url: origin }, { name: '_ga_PLAT08TEST', value: 'GS1.1.789', url: origin }])
+  // Withdraw from the privacy settings: GA cookies (written by the tag) expire, one reload unloads the tag, no loop.
   await page.goto(`${BASE}/privacy`)
   await expect(page.getByTestId('analytics-status')).toHaveText(/Analytics is on/)
-  await expect.poll(() => google.hits.length).toBe(4)
-  expect(google.hits[3]).toMatchObject({ dl: `${origin}/privacy`, dt: 'Privacy settings' })
-  expect(google.hits[3].dr ?? '').not.toMatch(/content\/8/)
+  await expect.poll(() => google.views().length).toBe(4)
+  expect(google.views()[3]).toMatchObject({ dl: `${origin}/privacy`, dt: 'Privacy settings' })
+  expect(google.views()[3].dr ?? '').not.toMatch(/content\/8/)
+  const gaCookies = async () => (await context.cookies(origin)).map((cookie) => cookie.name).filter((name) => name.startsWith('_ga')).sort()
+  await expect.poll(gaCookies).toEqual(['_ga', '_ga_PLAT08TEST'])
+  const hitsBefore = google.hits.length
+  const navigations = []
+  page.on('framenavigated', (frame) => frame === page.mainFrame() && navigations.push(frame.url()))
   await page.getByRole('button', { name: 'Withdraw consent' }).click()
-  await expect(page.getByRole('status')).toHaveText('Consent withdrawn. Analytics cookies were removed.')
-  expect((await context.cookies(origin)).map((cookie) => cookie.name).filter((name) => name.startsWith('_ga'))).toEqual([])
+  await expect(page.getByRole('status')).toHaveText('Consent withdrawn. Analytics cookies were removed and the Google tag was unloaded.')
+  await page.waitForTimeout(1500)
+  expect(navigations).toEqual([`${origin}${BASE}/privacy`]) // exactly one reload
+  expect(await gaCookies()).toEqual([])
+  expect(await page.locator('script[src*="googletagmanager"]').count()).toBe(0)
+  expect(await page.evaluate(() => window.dataLayer)).toBeUndefined()
+  await expect(page.getByTestId('analytics-status')).toHaveText(/Analytics is off/)
   await page.goBack()
   await page.goForward()
   await settle(page)
-  expect(google.hits).toHaveLength(4)
-  await expect(page.getByTestId('analytics-status')).toHaveText(/Analytics is off/)
+  expect(google.hits).toHaveLength(hitsBefore)
+  expect(google.scripts()).toHaveLength(2) // the start-up load on /privacy; none after the withdrawal
   await expect(page.getByRole('region', { name: 'Help us improve Pythagoras?' })).toBeHidden()
 })
 
 test('sign_up is sent once after the register API succeeds, without personal data', async ({ page }) => {
-  await page.addInitScript((key) => localStorage.setItem(key, JSON.stringify({ v: 1, choice: 'granted', at: '2026-11-01T00:00:00.000Z' })), KEY)
+  await page.addInitScript((key) => localStorage.setItem(key, JSON.stringify({ v: 1, choice: 'granted', at: new Date().toISOString() })), KEY)
   const google = await mockGoogle(page)
   const replies = [
     () => [400, { code: 'VALIDATION_ERROR', fields: { email: ['An account with this email already exists.'] } }],
@@ -161,4 +172,41 @@ test('Decline, and a blocked tag after Accept, leave the product fully working',
   await page.getByRole('link', { name: 'Back to archive' }).click()
   await expect(page.getByRole('link', { name: 'Patience', exact: true })).toBeVisible()
   expect(google.hits).toEqual([])
+})
+
+test('the banner sits below dialogs and drawers and steps aside while a modal dialog is open', async ({ page }) => {
+  await mockGoogle(page)
+  await mockApi(page)
+  await page.goto(`${BASE}/dawah`)
+  const banner = page.getByRole('region', { name: 'Help us improve Pythagoras?' })
+  await expect(banner).toBeVisible()
+
+  // A bottom-aligned z-50 sheet (like the admin ConfirmDialog on phones), first WITHOUT aria-modal: it must be on top.
+  const addSheet = (modal) =>
+    page.evaluate((isModal) => {
+      const overlay = document.createElement('div')
+      overlay.id = 'sheet'
+      overlay.className = 'fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4'
+      overlay.innerHTML = '<div role="dialog" aria-label="Bottom sheet" class="w-full max-w-md rounded-2xl bg-white p-6"><button type="button" id="sheet-action">Sheet action</button></div>'
+      if (isModal) overlay.firstElementChild.setAttribute('aria-modal', 'true')
+      overlay.querySelector('button').addEventListener('click', () => overlay.remove())
+      document.body.appendChild(overlay)
+    }, modal)
+  const onTop = () =>
+    page.evaluate(() => {
+      const box = document.getElementById('sheet-action').getBoundingClientRect()
+      return document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)?.id
+    })
+
+  await addSheet(false)
+  await expect(banner).toBeVisible()
+  expect(await onTop()).toBe('sheet-action')
+  await page.getByRole('button', { name: 'Sheet action' }).click()
+  await expect(page.locator('#sheet')).toHaveCount(0)
+
+  await addSheet(true)
+  await expect(banner).toBeHidden()
+  expect(await onTop()).toBe('sheet-action')
+  await page.getByRole('button', { name: 'Sheet action' }).click()
+  await expect(banner).toBeVisible()
 })

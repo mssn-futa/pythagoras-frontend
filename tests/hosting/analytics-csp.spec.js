@@ -39,9 +39,9 @@ test('GA4 is consent-gated under the production CSP, which allows only the docum
   await expect.poll(() => google.scripts()).toEqual([`https://www.googletagmanager.com/gtag/js?id=${ID}`])
   await page.goto('/privacy?from=mail#x') // a reload with the stored consent: the tag loads at start-up
   await expect(page.getByRole('heading', { name: 'Privacy settings' })).toBeVisible()
-  await expect.poll(() => google.hits.length).toBe(1)
+  await expect.poll(() => google.views().length).toBe(1)
   expect(google.scripts()).toHaveLength(2) // once per document
-  expect(google.hits.at(-1)).toMatchObject({ en: 'page_view', dl: `${new URL(page.url()).origin}/privacy`, dt: 'Privacy settings' })
+  expect(google.views().at(-1)).toMatchObject({ en: 'page_view', dl: `${new URL(page.url()).origin}/privacy`, dt: 'Privacy settings' })
   expect(violations).toEqual([])
 
   // Negative controls: hosts outside the allowance are refused by the policy (no request leaves the page).

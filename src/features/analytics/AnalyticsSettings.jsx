@@ -14,7 +14,8 @@ function statusText({ enabled, choice, optOutSignal }) {
 export default function AnalyticsSettings() {
   const analytics = useAnalytics();
   const state = useAnalyticsState();
-  const [notice, setNotice] = useState("");
+  // After a withdrawal the page reloads once to unload the Google tag; the new page says what happened.
+  const [notice, setNotice] = useState(() => (state.withdrawnByReload ? "Consent withdrawn. Analytics cookies were removed and the Google tag was unloaded." : ""));
   const canChoose = state.enabled && !state.optOutSignal;
 
   const allow = () => {

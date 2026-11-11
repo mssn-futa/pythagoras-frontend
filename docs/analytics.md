@@ -31,13 +31,25 @@ slot routes are templated automatically; add a generic title in `src/features/an
   script, no `dataLayer`, no CSP allowance.
 - Explicit opt-in: a non-modal banner (Accept / Decline, link to `/privacy`). Until Accept nothing is loaded or sent.
 - Preference: `localStorage['pythagoras.analyticsConsent'] = {"v":1,"choice":"granted"|"denied","at":"<ISO>"}`. Only
-  this preference is stored. A different `v` re-asks. Unusable storage → the choice lasts for the page only.
+  this preference is stored. A different `v` re-asks, and so does a choice older than **12 months** (or with a missing,
+  invalid or future `at`); a lapsed choice also expires any leftover `_ga*` cookies. Unusable storage → the choice lasts
+  for the page only.
 - Do Not Track (`navigator.doNotTrack === '1'`, `window.doNotTrack`, `msDoNotTrack`) or Global Privacy Control
   (`navigator.globalPrivacyControl === true`) = declined, never prompted, not overridable while the signal is on.
 - Change/withdraw: `/privacy` (public, in the student/public layout), linked from the banner, the sign-in and
   sign-up footers and the profile page. Withdrawal sets `window['ga-disable-<ID>'] = true` (GA's documented opt-out),
   sends `gtag('consent','update',{analytics_storage:'denied'})`, expires `_ga`, `_ga_*` (and legacy `_gid`, `_gat*`)
-  for the host and each parent domain, and stops all events. No reload. Other open tabs follow via the `storage` event.
+  for the host and each parent domain, stops all events, and then — only if gtag.js was loaded in this document —
+  **reloads the page once** so the tag is unloaded (no reliance on consent-mode cookieless pings). Loop guard: a
+  `sessionStorage['pythagoras.analyticsWithdrawReload']` timestamp is written before the reload; the reloaded page
+  consumes it (and shows "Consent withdrawn … the Google tag was unloaded"), starts with consent denied so it never
+  loads the tag, and no controller reloads more than once or within 60 s of another withdrawal reload; without
+  usable sessionStorage it does not reload at all (the tag stays disabled by the opt-out flag). Other open tabs follow
+  the withdrawal via the `storage` event (opt-out flag + denied consent) but are not reloaded, since that could lose
+  unsaved input.
+- Banner stacking: `z-[44]`, above the navbar (z-30) and the mobile-menu dim (z-40) and below drawers, the open
+  sidebar and dialogs (z-45/z-50); it also hides while any `[aria-modal="true"]` or `dialog[open]` is in the document
+  and reserves its height as `body` bottom padding while shown so it never permanently covers the last controls.
 - No replay: events are never queued. A page view or sign-up before consent is dropped; accepting does not send the
   current page (only navigations completed after consent). A navigation completes when React Router commits it (pages
   load in a transition), session restoration has finished, and the path stayed 300 ms (so `/profile` →
@@ -47,6 +59,16 @@ slot routes are templated automatically; add a generic title in `src/features/an
   `denied`), `js`, `set` (sanitized page context so automatic hits never carry the raw URL or `document.title`), and
   `config` with `send_page_view: false`, `allow_google_signals: false`, `allow_ad_personalization_signals: false`.
   GA4 does not log or store IP addresses, so no `anonymize_ip` is needed.
+- History hooks (defence in depth for a misconfigured property): while consent is active the adapter wraps
+  `history.pushState`/`replaceState` and listens to `popstate` (installed before gtag.js loads, removed on withdrawal).
+  Each call first does `gtag('set', { page_location, page_title })` for the **target** URL's route template (resolved
+  with the router basename by `RouteAnalytics`), so an automatic "history change" page view from enhanced
+  measurement can only see the template. What could NOT be controlled from code: enhanced-measurement events that
+  read the clicked element (outbound clicks: `link_url`/`link_domain`; file downloads: `file_name`/`link_url`; site
+  search: `search_term` from the query; form interactions: `form_id`/`form_destination`; video events). gtag has no
+  supported switch to strip or override those per-event parameters, so **enhanced measurement OFF in the property is
+  a release gate** (below). Also not verifiable offline: whether real gtag.js's history listener honours the `set`
+  context (the local stub does; DebugView must confirm).
 - The initial referrer is reduced to an origin (`https://other.site/`, or the app origin), never a path or query.
 - Failures are swallowed: blocked/failed script (ad blocker), throwing `dataLayer`, storage errors, and errors in the
   registration observer never affect rendering, auth or navigation.
@@ -96,13 +118,18 @@ only after consent.
 - `tests/behavior/analytics.test.jsx` (vitest): config, no banner/script without ID, nothing before consent, DNT/GPC,
   Accept → one script + safe config + no replay, templated page views per navigation (ids/query/hash/not-found),
   guard redirect and session-restoration dedupe, decline persistence, withdrawal (cookies, opt-out flag, re-allow,
-  cross-tab), outdated preference, sign_up once after success only (400/503 first; not before consent; not login),
-  failure swallowing, every mounted route has a title.
+  cross-tab), single guarded withdrawal reload (+ post-reload notice, loop guards), 12-month expiry, outdated
+  preference, history hooks (push/replace/popstate set the target template; BrowserRouter basename; inert after
+  withdrawal), banner below/aside a bottom-aligned modal dialog, sign_up once after success only (400/503 first; not
+  before consent; not login; StrictMode + double submit), failure swallowing, every mounted route has a title.
 - `tests/behavior/hosting.test.js`: GA4 CSP additions and configuration errors.
 - `tests/browser/analytics.spec.js` (Playwright desktop + mobile, Vite): the real app under `/ga-harness/*`
   (`tests/browser/analytics.html`, synthetic ID `G-PLAT08TEST`; other specs stay analytics-off). Google hosts are
-  intercepted (`tests/browser/ga-stub.js`, a stub tag that turns events into `/g/collect` hits): zero Google requests
-  before consent, sanitized hits after, withdrawal, GPC, decline, blocked tag, sign_up once.
+  intercepted (`tests/browser/ga-stub.js`, a stub tag that turns events into `/g/collect` hits, writes `_ga`/`_ga_<id>`
+  cookies on config and emulates enhanced measurement's history page views as `history_probe` hits): zero Google
+  requests before consent, sanitized hits after, history probes only ever see templates, withdrawal (tag-written
+  cookies expire, exactly one reload, no tag afterwards), GPC, decline, blocked tag, sign_up once, banner below a
+  bottom sheet and hidden while a modal dialog is open.
 - `tests/hosting/analytics-csp.spec.js` with `npx playwright test --config tests/hosting/analytics.playwright.config.js`:
   GA-enabled production build behind `wrangler dev` and its generated CSP: no request before consent, tag + collection
   allowed without violations, `www.google.com`/`doubleclick`/arbitrary script hosts refused. (Separate build because a
@@ -110,18 +137,29 @@ only after consent.
 
 The stub proves gating and sanitization only. It does **not** prove receipt by GA4.
 
-## Real GA4 verification (BLOCKED: no property access)
+## Release acceptance gate: GA4 DebugView (RELEASE-06/07; BLOCKED here: no property access)
 
-Status: **BLOCKED** — no organization-owned GA4 property or test access was available to this package. Final analytics
-acceptance needs the following, done by someone with property access:
+Status: **BLOCKED** for PLAT-08 — no organization-owned GA4 property or test access was available. Final analytics
+acceptance is this check, performed by someone with property access on the staging build, and recorded (screenshots or
+DebugView export, no PII) in the release evidence. Any failure blocks the release.
 
-1. Apply the checklist above; note the measurement ID.
+1. Apply the property checklist above (enhanced measurement OFF is mandatory); note the measurement ID.
 2. `VITE_GA_MEASUREMENT_ID=G-… npm run build:cloudflare` (with the real origins) and deploy to staging.
-3. In Chrome, install/enable the Tag Assistant or add `debug_mode` for the session only (Tag Assistant
-   `tagassistant.google.com` connect is easiest; do not commit `debug_mode`). Open GA4 → Admin → DebugView.
-4. Load the app: confirm **no** request to Google in DevTools Network and no `_ga` cookie before choosing.
-5. Accept; navigate `/dawah` → an event → a content item → `/privacy`. DebugView must show one `page_view` per
-   navigation with `page_location` = templates (`…/dawah/events/:id`), generic `page_title`, no query/fragment/IDs.
-6. Register a synthetic account: exactly one `sign_up` with `method = email`; a failed attempt (duplicate email) shows none.
-7. Withdraw in `/privacy`: `_ga` cookies disappear, no further events. Repeat with DNT/GPC enabled: no banner, no requests.
-8. Console: no CSP violations. Record screenshots/export of DebugView (no PII) in the release evidence (RELEASE-06/07).
+3. Enable debug for the session only via Tag Assistant (`tagassistant.google.com` → connect the staging URL); never
+   commit `debug_mode`. Open GA4 → Admin → DebugView. Keep DevTools → Network open with "Preserve log".
+4. Fresh profile, no consent: load the app. **No** request to `googletagmanager.com`/`google-analytics.com`, no `_ga`
+   cookie. DebugView shows nothing.
+5. Accept. Then the **probe**: open `/dawah` and click through to an event, then type the probe URL
+   `/dawah/events/42?utm_source=x#y` into the address bar (full load) and click one in-app link from it.
+   Required in DebugView for each navigation after consent: **exactly one `page_view`**, `page_location` =
+   `https://<app>/dawah/events/:id` (templated `dl`: no `42`, no `utm_source`, no `#y`), `page_title` = `Event details`,
+   `page_referrer` without a path/query from another site. **No extra events**: no second `page_view` per navigation,
+   no `scroll`, `click`, `file_download`, `view_search_results`, `form_start`/`form_submit`, `video_*`. (Automatic
+   `session_start`/`first_visit`/`user_engagement` are expected; their `page_location` must also be a template.)
+   In Network, every `/g/collect` request's `dl`/`dr`/`dt` parameters must match the same rules.
+6. Register a synthetic account: exactly one `sign_up` with `method = email`; a failed attempt (duplicate email) and a
+   login show none. No user ID, email or name in any parameter or user property.
+7. Withdraw in `/privacy`: the page reloads once, `_ga`/`_ga_*` cookies are gone, no `gtag/js` in the new document,
+   no further events in DebugView or Network. Repeat in a profile with DNT or GPC on: no banner, no Google requests.
+8. Console: no CSP violations. If a CSP refusal names another GA collection host, add it exactly via
+   `PUBLIC_EXTRA_CONNECT_ORIGINS` and record it here.

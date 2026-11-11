@@ -7,18 +7,31 @@ export const CONSENT_STORAGE_KEY = "pythagoras.analyticsConsent";
 export const CONSENT_VERSION = 1;
 export const CHOICES = Object.freeze({ UNSET: "unset", GRANTED: "granted", DENIED: "denied" });
 
-/** Reads the stored choice; anything missing, malformed, outdated or unreadable is "unset". */
-export function readStoredChoice(storage) {
+/** A stored choice older than this is asked again (12 months). */
+export const CONSENT_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
+
+/**
+ * Reads the stored preference: { choice, expired }. Anything missing, malformed, from another version or
+ * unreadable is "unset"; a choice whose `at` is missing, invalid, in the future or older than 12 months is
+ * "unset" with expired: true (the visitor is asked again).
+ */
+export function readStoredConsent(storage, now = new Date()) {
   try {
     const raw = storage?.getItem(CONSENT_STORAGE_KEY);
-    if (!raw) return CHOICES.UNSET;
+    if (!raw) return { choice: CHOICES.UNSET, expired: false };
     const parsed = JSON.parse(raw);
-    if (parsed?.v !== CONSENT_VERSION) return CHOICES.UNSET;
-    return parsed.choice === CHOICES.GRANTED || parsed.choice === CHOICES.DENIED ? parsed.choice : CHOICES.UNSET;
+    if (parsed?.v !== CONSENT_VERSION) return { choice: CHOICES.UNSET, expired: false };
+    if (parsed.choice !== CHOICES.GRANTED && parsed.choice !== CHOICES.DENIED) return { choice: CHOICES.UNSET, expired: false };
+    const at = typeof parsed.at === "string" ? Date.parse(parsed.at) : NaN;
+    const age = now.getTime() - at;
+    if (!Number.isFinite(age) || age < -5 * 60 * 1000 || age > CONSENT_MAX_AGE_MS) return { choice: CHOICES.UNSET, expired: true };
+    return { choice: parsed.choice, expired: false };
   } catch {
-    return CHOICES.UNSET;
+    return { choice: CHOICES.UNSET, expired: false };
   }
 }
+
+export const readStoredChoice = (storage, now) => readStoredConsent(storage, now).choice;
 
 /** Persists a choice. Returns false when storage is unavailable (the choice then lasts for this page only). */
 export function writeStoredChoice(storage, choice, now = new Date()) {

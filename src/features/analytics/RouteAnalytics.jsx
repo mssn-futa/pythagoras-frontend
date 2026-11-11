@@ -1,8 +1,8 @@
 import { useContext, useEffect, useMemo, useRef } from "react";
-import { useLocation } from "react-router-dom";
+import { useHref, useLocation } from "react-router-dom";
 import { AuthContext } from "../auth/AuthContext.js";
 import { useAnalytics } from "./AnalyticsContext.js";
-import { analyticsRouteTree, describeRoute } from "./routeTemplates.js";
+import { analyticsRouteTree, describeRoute, FALLBACK_TITLE, NOT_FOUND_TEMPLATE, PAGE_TITLES } from "./routeTemplates.js";
 
 /** Long enough for guard redirects (<Navigate> runs in an effect) to replace the location first. */
 export const SETTLE_DELAY_MS = 300;
@@ -21,6 +21,21 @@ export default function RouteAnalytics({ preloadTree, delay = SETTLE_DELAY_MS })
   const { pathname } = useLocation();
   const tree = useMemo(() => analyticsRouteTree(preloadTree), [preloadTree]);
   const reported = useRef(null);
+  const rootHref = useHref("/");
+
+  // Lets the adapter sanitize a URL BEFORE the router commits it (history hooks): strip the router basename,
+  // then template the rest; anything outside the app's basename is "not found".
+  useEffect(() => {
+    if (!analytics?.enabled) return undefined;
+    const basename = rootHref.replace(/\/+$/, "");
+    analytics.setPageResolver?.((pathname) => {
+      if (basename && pathname !== basename && !pathname.startsWith(`${basename}/`)) {
+        return { template: NOT_FOUND_TEMPLATE, title: PAGE_TITLES[NOT_FOUND_TEMPLATE] ?? FALLBACK_TITLE };
+      }
+      return describeRoute(tree, pathname.slice(basename.length) || "/");
+    });
+    return () => analytics.setPageResolver?.(null);
+  }, [analytics, rootHref, tree]);
 
   useEffect(() => {
     if (!analytics?.enabled || restoring) return undefined;
