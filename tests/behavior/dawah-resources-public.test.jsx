@@ -250,7 +250,7 @@ describe('archive type filter', () => {
     const h = serve({ '/dawah/archive/': ({ request }) => ok(page(new URL(request.url).searchParams.get('type') === 'doc' ? [doc(30)] : [audio(8)])) })
     render(<TestApp path="/dawah" />)
     await screen.findByRole('link', { name: 'Patience 8' })
-    expect(archiveCalls(h)[0].query.type).toBe('aud')
+    expect(archiveCalls(h)[0].query.type).toBeUndefined()
     const user = userEvent.setup()
     await user.selectOptions(screen.getByLabelText('Type'), 'doc')
     await user.click(screen.getByRole('button', { name: 'Apply filters' }))
@@ -260,11 +260,20 @@ describe('archive type filter', () => {
     expect(archiveCalls(h).every((call) => call.auth === null)).toBe(true)
   })
 
-  test('an unknown type in the URL falls back to audio', async () => {
+  test('an unknown type in the URL falls back to all types; type=aud selects audio', async () => {
     const h = serve()
     render(<TestApp path="/dawah?type=zip" />)
     await screen.findByRole('link', { name: 'Patience 8' })
+    expect(archiveCalls(h)[0].query.type).toBeUndefined()
+    expect(screen.getByLabelText('Type')).toHaveValue('all')
+  })
+
+  test('the archive defaults to every type and type=aud deep links to audio', async () => {
+    const h = serve()
+    render(<TestApp path="/dawah?type=aud" />)
+    await screen.findByRole('link', { name: 'Patience 8' })
     expect(archiveCalls(h)[0].query.type).toBe('aud')
+    expect(screen.getByLabelText('Type')).toHaveValue('aud')
   })
 
   test('a document with an unsafe URL in the archive shows as unavailable, never a link', async () => {
