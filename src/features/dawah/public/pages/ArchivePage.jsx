@@ -12,9 +12,9 @@ import { formatDateTime } from '../lib/format.js'
 import { useRemote } from '../lib/useRemote.js'
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
-// Absent `type` means audio (the established default); `all` lists every visible type.
-const ARCHIVE_TYPES = ['all', 'vid', 'doc']
-const EMPTY = { search: '', speaker: '', category: '', dateFrom: '', dateTo: '', type: 'aud' }
+// Absent `type` lists every visible type (the archive holds audio, video and documents).
+const ARCHIVE_TYPES = ['aud', 'vid', 'doc']
+const EMPTY = { search: '', speaker: '', category: '', dateFrom: '', dateTo: '', type: 'all' }
 
 /** URL query is the filter state, so reload/back/deep links keep it. */
 function readFilters(params) {
@@ -26,7 +26,7 @@ function readFilters(params) {
     category: isCanonicalCategory((params.get('category') ?? '').trim()) ? params.get('category').trim() : '',
     dateFrom: date('from'),
     dateTo: date('to'),
-    type: ARCHIVE_TYPES.includes(params.get('type')) ? params.get('type') : 'aud',
+    type: ARCHIVE_TYPES.includes(params.get('type')) ? params.get('type') : 'all',
     page: Number.isInteger(page) && page > 0 ? page : 1,
   }
 }
@@ -74,7 +74,7 @@ export default function ArchivePage() {
     if (pageOutOfRange) setParams(toParams({ ...filters, page: 1 }), { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageOutOfRange])
-  const filtered = Boolean(filters.search || filters.speaker || filters.category || filters.dateFrom || filters.dateTo || filters.type !== 'aud')
+  const filtered = Boolean(filters.search || filters.speaker || filters.category || filters.dateFrom || filters.dateTo || filters.type !== 'all')
 
   const apply = (next) => setParams(toParams({ ...next, page: 1 }))
   const goToPage = (page) => {
