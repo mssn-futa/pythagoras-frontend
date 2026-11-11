@@ -60,6 +60,12 @@ test('admin student list: search, detail, field error and failed deactivation', 
   await expect(page.getByRole('button', { name: 'Tunde Bello', exact: true })).toBeVisible()
   await expect(page.getByText('John Doe')).toHaveCount(0)
 
+  // No horizontal page overflow; small screens use cards, larger ones the table.
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+  expect(overflow).toBeLessThanOrEqual(0)
+  const small = (page.viewportSize()?.width ?? 1024) < 768
+  await expect(page.getByRole('table')).toHaveCount(small ? 0 : 1)
+
   // Search narrows the real list and is reflected in the URL.
   await page.getByLabel('Search students').fill('tunde')
   await expect(page).toHaveURL(/\?search=tunde$/)

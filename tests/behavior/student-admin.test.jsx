@@ -375,3 +375,19 @@ describe('out-of-range page', () => {
     expect(location()).toBe('/admin/students?level=300')
   })
 })
+
+describe('student list on small screens', () => {
+  afterEach(() => { delete window.matchMedia })
+
+  test('renders stacked cards instead of the table', async () => {
+    window.matchMedia = (query) => ({
+      matches: true, media: query, addEventListener() {}, removeEventListener() {},
+    })
+    serveStudents([row(1, { department: 'Mechanical Engineering', level: '300' })])
+    render(<TestApp path="/admin/students" />)
+    const cards = await screen.findByTestId('student-cards')
+    expect(screen.queryByRole('table')).toBeNull()
+    expect(within(cards).getByText(/Mechanical Engineering/)).toBeInTheDocument()
+    expect(within(cards).getByRole('button', { name: 'View profile of First1 Last1' })).toBeInTheDocument()
+  })
+})
