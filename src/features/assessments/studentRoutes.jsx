@@ -1,17 +1,27 @@
+import AttemptPage from "./student/pages/AttemptPage.jsx";
+import AvailableQuizzesPage from "./student/pages/AvailableQuizzesPage.jsx";
+import ClassCatalogPage from "./student/classes/pages/ClassCatalogPage.jsx";
+import ClassDetailPage from "./student/classes/pages/ClassDetailPage.jsx";
+import ModulePage from "./student/classes/pages/ModulePage.jsx";
+import QuizIntroPage from "./student/pages/QuizIntroPage.jsx";
+import ResultPage from "./student/pages/ResultPage.jsx";
+import ResultsHistoryPage from "./student/pages/ResultsHistoryPage.jsx";
+
 /**
- * Assessments student route slot (D3: student quizzes, attempts, classes/modules).
- *
- * Owned by the domain work packages; PLAT-04 owns where it is mounted (src/App.jsx).
- * Mounted at: /* inside the student Layout, behind RequireAuth.
- * Entries are react-router route objects with RELATIVE paths, e.g.
- *   { path: "events", element: <EventsPage /> }
- *   { path: "events/:id", element: <EventDetail /> }
- *   { path: "content", children: [{ index: true, element: <ContentList /> }] }
- * Import only pages that exist in this repository. Keep the list empty until
- * a feature is really available (D0: unavailable features stay unmounted).
- * `public: true` on a top-level entry mounts it without RequireAuth; assessments
- * require authentication (A03), so do not use it here without a design change.
+ * Assessments student route slot (D3 "Frontend Design").
+ * Mounted at /* inside the student Layout, behind RequireAuth (assessments are
+ * private, A03). Relative paths. `/profile/results*` are siblings of the root
+ * `profile` route, which has no children.
  */
-export const assessmentStudentRoutes = [];
+export const assessmentStudentRoutes = [
+  { path: "dawah/classes", element: <ClassCatalogPage /> },
+  { path: "dawah/classes/:id", element: <ClassDetailPage /> },
+  { path: "dawah/classes/:id/modules/:moduleId", element: <ModulePage /> },
+  { path: "dawah/quizzes", element: <AvailableQuizzesPage /> },
+  { path: "dawah/quizzes/:id", element: <QuizIntroPage /> },
+  { path: "dawah/attempts/:id", element: <AttemptPage /> },
+  { path: "profile/results", element: <ResultsHistoryPage /> },
+  { path: "profile/results/:id", element: <ResultPage /> },
+];
 
 export default assessmentStudentRoutes;
