@@ -119,6 +119,21 @@ describe('configuration', () => {
   })
 })
 
+describe('public header copy', () => {
+  test('/privacy has its own subtitle while the archive keeps the archive copy', async () => {
+    renderApp(createAnalytics(null), '/privacy')
+    await screen.findByTestId('analytics-status')
+    expect(screen.getByText('Manage how Pythagoras measures usage')).toBeInTheDocument()
+    expect(screen.queryByText("Browse the published Da'wah archive")).toBeNull()
+  })
+
+  test('the archive shows the archive subtitle', async () => {
+    renderApp(createAnalytics(null), '/dawah')
+    await screen.findByRole('heading', { name: 'Archive page' })
+    expect(screen.getByText("Browse the published Da'wah archive")).toBeInTheDocument()
+  })
+})
+
 describe('before consent', () => {
   test('the banner asks, and nothing loads or is recorded while undecided', async () => {
     const user = userEvent.setup()

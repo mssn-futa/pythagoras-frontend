@@ -62,23 +62,26 @@ export default function ConsentBanner() {
       aria-describedby={textId}
       data-testid="analytics-consent"
       ref={panel}
-      className="fixed inset-x-0 bottom-0 z-[44] p-3 sm:p-4 pointer-events-none"
+      className="fixed inset-x-0 bottom-0 z-[44] p-2 sm:p-4 pointer-events-none"
     >
-      <div className="pointer-events-auto mx-auto max-w-3xl rounded-2xl bg-white dark:bg-black text-[#1F2937] dark:text-white shadow-lg border border-gray-200 dark:border-gray-700 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-5">
+      <div className="pointer-events-auto mx-auto max-w-3xl rounded-2xl bg-white dark:bg-black text-[#1F2937] dark:text-white shadow-lg border border-gray-200 dark:border-gray-700 p-3 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-5">
         <div className="flex-1 min-w-0 space-y-1">
-          <h2 id={titleId} className="text-base font-semibold">
+          <h2 id={titleId} className="text-sm sm:text-base font-semibold">
             Help us improve Pythagoras?
           </h2>
-          <p id={textId} className="text-sm text-[#4B5563] dark:text-gray-300">
-            With your permission we use Google Analytics to count page types visited and completed sign-ups. No names, emails, matric numbers or
-            page content are sent. You can change this any time in{" "}
+          <p id={textId} className="text-xs sm:text-sm text-[#4B5563] dark:text-gray-300">
+            <span className="sm:hidden">Optional Google Analytics, only with your permission. No personal data is sent. Change it any time in{" "}</span>
+            <span className="hidden sm:inline">
+              With your permission we use Google Analytics to count page types visited and completed sign-ups. No names, emails, matric numbers or
+              page content are sent. You can change this any time in{" "}
+            </span>
             <Link to="/privacy" className="text-[#2A742F] dark:text-[#04AF43] font-medium hover:underline">
               privacy settings
             </Link>
             .
           </p>
         </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex gap-2 shrink-0 [&>button]:flex-1 sm:[&>button]:flex-none [&>button]:py-2 sm:[&>button]:py-2.5">
           <button type="button" onClick={analytics.decline} className={secondaryButton}>
             Decline
           </button>

@@ -210,3 +210,18 @@ test('the banner sits below dialogs and drawers and steps aside while a modal di
   await page.getByRole('button', { name: 'Sheet action' }).click()
   await expect(banner).toBeVisible()
 })
+
+test('on a phone the first-visit banner never covers the primary sign-in action and can be dismissed', async ({ page }) => {
+  await mockGoogle(page)
+  await mockApi(page)
+  await page.setViewportSize({ width: 390, height: 666 })
+  await page.goto(`${BASE}/sign-in`)
+  const banner = page.getByRole('region', { name: 'Help us improve Pythagoras?' })
+  await expect(banner).toBeVisible()
+  const submit = page.getByRole('button', { name: /^sign in$/i })
+  await submit.scrollIntoViewIfNeeded()
+  const [b, s] = await Promise.all([banner.boundingBox(), submit.boundingBox()])
+  expect(s.y + s.height).toBeLessThanOrEqual(b.y + 1)
+  await banner.getByRole('button', { name: 'Decline' }).click()
+  await expect(banner).toBeHidden()
+})
