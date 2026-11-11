@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
   ACCEPTANCE_DISCLAIMER, audienceLabel, broadcastStateText, BROADCAST_STATES, canRetryDelivery, DELIVERY_STATES,
-  deliveryStateText, formatLagos, isOutstanding, validateForm,
+  deliveryErrorExplanation, deliveryStateText, formatLagos, isOutstanding, validateForm, withoutStaleErrors,
 } from '../../src/features/communication/model.js'
 
 const form = (over = {}) => ({ subject: 'Hello', body: 'Body', audienceType: 'all', department: '', level: '', ...over })
@@ -89,5 +89,35 @@ describe('dates', () => {
     expect(formatLagos('2026-11-10T23:30:00Z')).toBe('11 Nov 2026, 00:30 (Lagos)')
     expect(formatLagos(null)).toBe('—')
     expect(formatLagos('nonsense')).toBe('—')
+  })
+})
+
+describe('delivery error explanations', () => {
+  test('queued rows with a code say they retry automatically with the same key', () => {
+    const text = deliveryErrorExplanation({ state: 'queued', errorCode: 'TIMEOUT' })
+    expect(text).toMatch(/retried automatically with the same send key/i)
+    expect(text).toMatch(/duplicate/i)
+  })
+  test('failed invalid recipient and unknown codes get plain sentences', () => {
+    expect(deliveryErrorExplanation({ state: 'failed', errorCode: 'INVALID_RECIPIENT' })).toMatch(/rejected this recipient address/i)
+    expect(deliveryErrorExplanation({ state: 'failed', errorCode: 'WEIRD' })).toMatch(/could not complete/i)
+    expect(deliveryErrorExplanation({ state: 'sent', errorCode: '' })).toBe('')
+  })
+})
+
+describe('cancelled broadcasts', () => {
+  test('have a gray label, are terminal and filterable', () => {
+    expect(broadcastStateText('cancelled')).toMatchObject({ label: 'Cancelled', tone: 'gray' })
+    expect(BROADCAST_STATES).toContain('cancelled')
+    expect(isOutstanding({ state: 'cancelled' })).toBe(false)
+  })
+})
+
+describe('stale field errors', () => {
+  test('editing a field drops only its own errors', () => {
+    const errors = { subject: ['x'], audience: ['y'], body: ['z'] }
+    expect(withoutStaleErrors(errors, { audienceType: 'level' })).toEqual({ subject: ['x'], body: ['z'] })
+    expect(withoutStaleErrors(errors, { subject: 'a' })).toEqual({ audience: ['y'], body: ['z'] })
+    expect(withoutStaleErrors(errors, { weekday: '1' })).toBe(errors)
   })
 })

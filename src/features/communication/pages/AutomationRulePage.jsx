@@ -6,7 +6,7 @@ import { describeFormError } from "../../auth/formErrors.js";
 import { createRule, disableRule, enableRule, getRule, previewRule, reassignRule, updateRule } from "../api/automationsApi.js";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import { cardClass, LoadingLine, PageError, primaryButton, secondaryButton } from "../components/common.jsx";
-import { audienceLabel } from "../model.js";
+import { audienceLabel, withoutStaleErrors } from "../model.js";
 import {
   EMPTY_RULE_FORM, KIND_LABELS, formToDraft, ruleFormKey, ruleStatus, ruleToForm, scheduleSummary, validateRuleForm, TIMEZONE,
 } from "../automations/automationModel.js";
@@ -82,6 +82,7 @@ function Editor({ id }) {
   const dirty = ruleFormKey(form) !== baseline;
   const change = (patch) => {
     setForm((current) => ({ ...current, ...patch }));
+    setFieldErrors((current) => withoutStaleErrors(current, patch));
     setNotice(null);
   };
 

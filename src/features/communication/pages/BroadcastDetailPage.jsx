@@ -5,7 +5,8 @@ import { getBroadcast, listDeliveries, retryDeliveries } from "../api/broadcasts
 import {
   BroadcastStateBadge, cardClass, CountsLine, DeliveryStateBadge, EmptyState, LoadingLine, PageError, Pager, primaryButton, secondaryButton,
 } from "../components/common.jsx";
-import { ACCEPTANCE_DISCLAIMER, audienceLabel, broadcastStateText, canRetryDelivery, DELIVERY_STATES, deliveryStateText, formatLagos, isOutstanding } from "../model.js";
+import { ACCEPTANCE_DISCLAIMER, audienceLabel, broadcastStateText, canRetryDelivery, DELIVERY_STATES, deliveryStateText, deliveryErrorExplanation, formatLagos, isOutstanding } from "../model.js";
+import SafePreviewFrame from "../editor/SafePreviewFrame.jsx";
 import { usePolling } from "../usePolling.js";
 
 const PAGE_SIZE = 20;
@@ -39,7 +40,12 @@ function DeliveryRow({ delivery, selected, onToggle }) {
       <td className="py-2 pr-3 text-sm">{delivery.attemptCount}</td>
       <td className="break-all py-2 pr-3 text-xs text-gray-600 dark:text-gray-300">
         {delivery.providerEmailId ? <span className="block">Resend ID: {delivery.providerEmailId}</span> : null}
-        {delivery.errorCode ? <span className="block">Error code: {delivery.errorCode}</span> : null}
+        {delivery.errorCode ? (
+          <>
+            <span className="block text-sm text-gray-700 dark:text-gray-200">{deliveryErrorExplanation(delivery)}</span>
+            <span className="block">Error code: {delivery.errorCode}</span>
+          </>
+        ) : null}
         {delivery.sentAt ? <span className="block">Accepted {formatLagos(delivery.sentAt)}</span> : null}
       </td>
     </tr>
@@ -141,12 +147,21 @@ export default function BroadcastDetailPage() {
         </dl>
         <CountsLine broadcast={broadcast} />
         <p className="text-xs text-gray-500">{ACCEPTANCE_DISCLAIMER}</p>
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Frozen content (plain text)</p>
+        {broadcast.bodyFormat === "rich" && broadcast.bodyHtml && (
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Frozen content (rich text)</p>
+            <p className="mt-1 text-xs text-gray-500">The formatted message as queued, shown in an isolated frame. Recipients also get the plain-text version below.</p>
+            <SafePreviewFrame html={broadcast.bodyHtml} title="Frozen broadcast content (sandboxed)" className="mt-2" />
+          </div>
+        )}
+        <details className="group" open={!(broadcast.bodyFormat === "rich" && broadcast.bodyHtml)}>
+          <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-gray-500">
+            {broadcast.bodyFormat === "rich" ? "Plain-text version" : "Frozen content (plain text)"}
+          </summary>
           <pre data-testid="detail-body" className="mt-1 whitespace-pre-wrap break-words rounded-lg bg-gray-50 p-3 font-sans text-sm text-[#1F2937] dark:bg-gray-900 dark:text-gray-100">
             {broadcast.body}
           </pre>
-        </div>
+        </details>
         {outstanding && !paused && <p className="text-xs text-gray-500">Updating automatically while messages are outstanding.</p>}
         {paused && (
           <div role="status" className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
