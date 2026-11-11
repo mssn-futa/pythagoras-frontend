@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { authService, onSessionEnded } from "../../services/api/index.js";
 import { AuthContext } from "./AuthContext.js";
 import { isAdmin, isStudent } from "./roles.js";
@@ -31,9 +31,17 @@ function settleRestoration(promise, isActive, setState) {
  * Owns the session lifecycle (D1): restores on load before guarded pages
  * render, exposes login/register/logout/profile actions, and reacts to forced
  * sign-out signalled by the shared client when a refresh fails.
+ *
+ * `onRegistered()` (PLAT-08 analytics hook point) runs exactly once per register() call
+ * whose API request succeeded (the account is persisted), never for failed or rejected
+ * attempts. It receives no arguments (no user data) and its errors are swallowed.
  */
-export default function AuthProvider({ children }) {
+export default function AuthProvider({ children, onRegistered }) {
   const [state, setState] = useState(RESTORING);
+  const onRegisteredRef = useRef(onRegistered);
+  useEffect(() => {
+    onRegisteredRef.current = onRegistered;
+  }, [onRegistered]);
 
   useEffect(() => {
     let active = true;
@@ -50,6 +58,16 @@ export default function AuthProvider({ children }) {
   const login = useCallback(async (credentials) => {
     const user = await authService.login(credentials);
     setState({ status: "authenticated", user, endReason: null, restoreError: null });
+    return user;
+  }, []);
+
+  const register = useCallback(async (values) => {
+    const user = await authService.register(values);
+    try {
+      onRegisteredRef.current?.();
+    } catch {
+      // Analytics (or any observer) must never turn a created account into a failure.
+    }
     return user;
   }, []);
 
@@ -82,13 +100,13 @@ export default function AuthProvider({ children }) {
       isAdmin: isAdmin(state.user),
       isStudent: isStudent(state.user),
       login,
-      register: authService.register,
+      register,
       logout,
       updateProfile,
       reloadUser,
       retryRestore,
     }),
-    [state, login, logout, updateProfile, reloadUser, retryRestore],
+    [state, login, register, logout, updateProfile, reloadUser, retryRestore],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

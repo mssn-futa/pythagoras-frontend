@@ -50,6 +50,11 @@ const Login = () => {
           <Link to="/sign-up" className="text-[#2A742F] dark:text-[#04AF43] font-medium hover:underline transition-all">
             Create an account
           </Link>
+          <span className="block mt-2">
+            <Link to="/privacy" className="text-[#2A742F] dark:text-[#04AF43] hover:underline transition-all">
+              Privacy settings
+            </Link>
+          </span>
         </>
       }
     >

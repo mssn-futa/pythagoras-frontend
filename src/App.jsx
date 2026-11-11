@@ -1,6 +1,11 @@
 import { useContext } from "react";
 import { Route, Routes, useLocation } from "react-router-dom";
 import Layout from "./components/layout/Layout";
+import AnalyticsProvider from "./features/analytics/AnalyticsProvider.jsx";
+import ConsentBanner from "./features/analytics/ConsentBanner.jsx";
+import PrivacyPage from "./features/analytics/PrivacyPage.jsx";
+import RouteAnalytics from "./features/analytics/RouteAnalytics.jsx";
+import AuthProvider from "./features/auth/AuthProvider.jsx";
 import { RedirectIfAuthenticated, RequireAdmin, RequireAuth } from "./features/auth/guards.jsx";
 import Login from "./pages/login/Login";
 import NotFound from "./pages/notFound/NotFound";
@@ -49,11 +54,11 @@ export function AppRoutes({ adminRoutes = adminSlotRoutes, studentRoutes = stude
             </Route>
           </Route>
 
-          {publicRoutes.length > 0 && (
-            <Route path="/" element={<Layout />}>
-              {renderRoutes(publicRoutes, "public")}
-            </Route>
-          )}
+          {/* Public pages in the student layout; /privacy (PLAT-08 analytics consent) is always reachable. */}
+          <Route path="/" element={<Layout />}>
+            <Route path="privacy" element={<PrivacyPage />} />
+            {renderRoutes(publicRoutes, "public")}
+          </Route>
 
           <Route path="/admin" element={<RequireAdmin />}>
             <Route element={<AdminArea />}>
@@ -70,6 +75,32 @@ export function AppRoutes({ adminRoutes = adminSlotRoutes, studentRoutes = stude
   );
 }
 
-const App = () => <AppRoutes />;
+/**
+ * The app inside a router: root routes plus the PLAT-08 analytics seams (route observer and
+ * consent prompt). Both render nothing unless an analytics controller with a measurement ID is
+ * provided, and both survive any analytics failure.
+ */
+const App = ({ adminRoutes = adminSlotRoutes, studentRoutes = studentSlotRoutes }) => (
+  <>
+    <AppRoutes adminRoutes={adminRoutes} studentRoutes={studentRoutes} />
+    <RouteAnalytics preloadTree={preloadTreeFor(studentRoutes, adminRoutes)} />
+    <ConsentBanner />
+  </>
+);
+
+/**
+ * Providers composed once for main.jsx (and the analytics browser harness): the analytics
+ * controller from createAnalytics(), and the auth provider whose confirmed-registration hook
+ * emits the single sign_up event.
+ */
+export function AppRoot({ analytics = null }) {
+  return (
+    <AnalyticsProvider analytics={analytics}>
+      <AuthProvider onRegistered={analytics?.trackSignUp}>
+        <App />
+      </AuthProvider>
+    </AnalyticsProvider>
+  );
+}
 
 export default App;

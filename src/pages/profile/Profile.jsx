@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../../features/auth/AuthContext.js";
 import { FormAlert, FormNotice, SelectField, SubmitButton, TextField } from "../../features/auth/components/FormControls.jsx";
 import { describeFormError } from "../../features/auth/formErrors.js";
@@ -96,6 +97,17 @@ const Profile = () => {
             Save changes
           </SubmitButton>
         </form>
+      </section>
+
+      <section className="py-8 px-5 md:px-8 bg-white rounded-2xl dark:bg-black">
+        <h2 className="text-xl font-semibold text-[#1F2937] dark:text-white mb-2">Privacy</h2>
+        <p className="text-sm text-[#6B7280] dark:text-gray-400">
+          Review, allow or withdraw anonymous usage analytics in{" "}
+          <Link to="/privacy" className="text-[#2A742F] dark:text-[#04AF43] font-medium hover:underline">
+            privacy settings
+          </Link>
+          .
+        </p>
       </section>
     </div>
   );
