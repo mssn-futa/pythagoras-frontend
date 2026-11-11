@@ -95,6 +95,10 @@ backslash, scheme, control-character, dot-segment (`.`/`..`, including `%2e`)
 and sign-in/up values are dropped, and the normalized result is re-checked so it
 can never start with `//`.
 
+Registration observer (PLAT-08): `<AuthProvider onRegistered={fn}>` calls `fn()` with no arguments exactly once per
+`register()` whose API request succeeded (never for failed/rejected attempts); its errors are swallowed. `AppRoot`
+in `src/App.jsx` wires it to the analytics `sign_up` event (`docs/analytics.md`).
+
 ## Route slots
 
 PLAT-04 owns `src/App.jsx`/`src/main.jsx`. Domain packages edit only their slot:

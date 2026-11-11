@@ -1,7 +1,7 @@
 # Frontend hosting on Cloudflare Workers Static Assets — RELEASE-04
 
 Governing designs: D5 "Cloudflare hosting topology", "Deployment and origins" and "Logging throttling and
-security"; D0 "Frontend client and route convention". The React/Vite app is hosted as static assets with only a tiny miss-guard Worker. PLAT-08 later adds GA4 consent/CSP (use `PUBLIC_EXTRA_CONNECT_ORIGINS` or extend `scripts/hosting/headers.mjs`).
+security"; D0 "Frontend client and route convention". The React/Vite app is hosted as static assets with only a tiny miss-guard Worker. PLAT-08 GA4 consent/CSP: see `docs/analytics.md`.
 
 ## Files
 
@@ -28,7 +28,9 @@ and SPA fallback. It is not part of the browser bundle.
 | `R2_S3_PRESIGN_ORIGIN` | yes | S3 endpoint host(s) of the presigned PUT (`connect-src`; also `img-src`/`media-src` because admin previews can be short-lived presigned GETs). Comma-separate bucket-style hosts. |
 | `PUBLIC_PRAYER_API_ENABLED` / `PUBLIC_PRAYER_API_ORIGIN` | no | Default **off**: D0 hides prayer/Hijri widgets in Phase 1, so `api.aladhan.com` is not in `connect-src` and `geolocation=()`. `=true` adds the origin (default `https://api.aladhan.com`, `src/services/islamicApi.js`) and `geolocation=(self)`. |
 | `PUBLIC_GOOGLE_FONTS_ENABLED` | no | Allows `fonts.googleapis.com` (`style-src`) and `fonts.gstatic.com` (`font-src`) for `src/index.css`'s Poppins `@import`. |
-| `PUBLIC_EXTRA_CONNECT_ORIGINS` | no | Exact extra `connect-src` origins (PLAT-08 GA4). No wildcards. |
+| `VITE_GA_MEASUREMENT_ID` | no | PLAT-08 public GA4 measurement ID (`G-…`, not a secret). Set → the bundle offers analytics consent and the CSP adds `https://www.googletagmanager.com` to `script-src` and it plus `https://www.google-analytics.com`, `https://region1.google-analytics.com`, `https://region1.analytics.google.com` to `connect-src`/`img-src`. Unset → no GA origin anywhere. A malformed ID fails the build. |
+| `PUBLIC_GA_ENABLED` | no | Optional confirmation of the above; defaults to "ID present". `true` without an ID, or `false` with one, fails the build (CSP and bundle would disagree). |
+| `PUBLIC_EXTRA_CONNECT_ORIGINS` | no | Exact extra `connect-src` origins (e.g. a further GA4 regional collection host if DebugView shows one). No wildcards. |
 | `CSP_REPORT_ONLY` | no | Emit `Content-Security-Policy-Report-Only` for a staged rollout. |
 | `HOSTING_ALLOW_INSECURE` | no | Local proof only: accept `http://localhost` origins; omits HSTS and `upgrade-insecure-requests`. |
 
@@ -43,6 +45,7 @@ VITE_API_URL=https://api.example.org PUBLIC_MEDIA_ORIGIN=https://media.example.o
 npm run hosting:dev        # wrangler dev (local, offline) at http://127.0.0.1:8788 serving dist with _headers + SPA fallback
 npm run hosting:dry-run    # wrangler deploy --dry-run: validates wrangler.jsonc and the asset directory
 npm run test:hosting       # production build behind wrangler dev: existing browser specs + CSP specs
+npx playwright test --config tests/hosting/analytics.playwright.config.js  # PLAT-08: GA-enabled build + CSP (port 4182)
 ```
 
 `npm run build` is unchanged (plain Vite build for CI/dev). Production deploys must use `build:cloudflare`.
@@ -59,10 +62,10 @@ npm run test:hosting       # production build behind wrangler dev: existing brow
 | `Cache-Control` | `no-cache` for `/*` (index.html and every SPA-fallback deep link); `public, max-age=31536000, immutable` for `/assets/*` (fingerprinted by Vite). `! Cache-Control` detaches the broader rule so values are not merged. |
 
 Third-party hosts allowed: Google Fonts (`src/index.css`) and `www.youtube-nocookie.com` (`VideoEmbed`); `api.aladhan.com`
-only if prayer times return. Self-hosting the font would remove that allowance (a feature-source change outside RELEASE-04).
+only if prayer times return; the GA4 hosts above only when a measurement ID is configured. Self-hosting the font would remove that allowance (a feature-source change outside RELEASE-04).
 
-The app has no PWA/service worker and no GA4 yet. PLAT-08 must add the GA4 script/connect origins and keep
-`script-src` free of `unsafe-inline`.
+The app has no PWA/service worker. GA4 (PLAT-08) is an external, consent-gated script; `script-src` stays free of
+`unsafe-inline` (see `docs/analytics.md`).
 
 ## SPA fallback and deep links
 
