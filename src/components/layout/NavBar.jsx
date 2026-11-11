@@ -18,7 +18,7 @@ export default function NavBar({ toggleSidebar, sidebarOpen = false, toggleRef, 
   return (
     <header className="w-full flex items-center justify-between px-4 md:px-6 py-4 bg-white dark:bg-[#000000] shadow-sm transition-colors">
       <div className="flex flex-col min-w-0 flex-1 mr-4" inert={contentInert}>
-        <p className="font-poppins font-semibold text-gray-800 dark:text-white text-lg md:text-2xl lg:text-3xl truncate">
+        <p className="font-poppins font-semibold text-gray-800 dark:text-white text-base leading-snug sm:text-lg md:text-2xl lg:text-3xl break-words md:truncate">
           Assalamu Alaykum
           {name && (
             <>
