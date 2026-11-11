@@ -19,7 +19,8 @@ const location = () => screen.getByTestId('location').textContent
 /** Signs in through session restoration and mounts the real app at `path`. */
 function openAt(path, ...handlers) {
   const rec = recorder()
-  server.use(...sessionHandlers(rec), ...handlers)
+  // Default: no saved results (the quiz list and intro look them up); tests list their own history first to override.
+  server.use(...sessionHandlers(rec), ...handlers, quizHandler.history(page([])))
   storeRefreshToken()
   render(<TestApp path={path} />)
   return rec
@@ -45,6 +46,22 @@ describe('discovery, instructions and start', () => {
     expect(rec.calls).toHaveLength(1)
     await userEvent.setup().click(screen.getByRole('link', { name: 'View Arabic week 1' }))
     expect(location()).toBe('/dawah/quizzes/45')
+  })
+
+  test('a submitted quiz shows its status and score and links to the result', async () => {
+    openAt('/dawah/quizzes', quizHandler.list(page([rawQuiz()])), quizHandler.history(page([rawResult({ score: 4, total_points: 10 })])), quizHandler.result(rawResult({ score: 4, total_points: 10 })))
+    expect(await screen.findByText('Submitted · 4 / 10')).toBeVisible()
+    expect(screen.queryByRole('link', { name: 'View Arabic week 1' })).toBeNull()
+    await userEvent.setup().click(screen.getByRole('link', { name: 'View result for Arabic week 1' }))
+    expect(location()).toBe('/profile/results/9')
+  })
+
+  test('intro of a submitted quiz offers View result instead of starting', async () => {
+    openAt('/dawah/quizzes/45', quizHandler.detail(), quizHandler.history(page([rawResult({ score: 4, total_points: 10 })])), quizHandler.result(rawResult({ score: 4, total_points: 10 })))
+    expect(await screen.findByText(/Submitted · 4 \/ 10\. You have already submitted/)).toBeVisible()
+    expect(screen.queryByRole('button', { name: /Start or continue quiz/ })).toBeNull()
+    await userEvent.setup().click(screen.getByRole('link', { name: 'View result' }))
+    expect(location()).toBe('/profile/results/9')
   })
 
   test('empty and error states', async () => {

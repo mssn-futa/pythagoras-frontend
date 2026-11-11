@@ -18,3 +18,9 @@ export function describeScore(result) {
     ? `${result.score} points (total unavailable for this older record)`
     : `${result.score} / ${result.totalPoints} points`;
 }
+
+/** "Submitted · 4 / 10" for a saved result; just "Submitted" when no score is available. */
+export function describeSubmitted(result) {
+  if (!result || result.score === null) return "Submitted";
+  return result.totalPoints === null ? `Submitted · ${result.score} points` : `Submitted · ${result.score} / ${result.totalPoints}`;
+}

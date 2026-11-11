@@ -10,7 +10,7 @@ import { AppRoutes } from '../../src/App.jsx'
 import AuthProvider from '../../src/features/auth/AuthProvider.jsx'
 import { createLearningBackend, rawClass, rawDoc, rawModule, rawVideo } from '../fixtures/assessLearningApi.js'
 import { audio } from '../fixtures/dawah.js'
-import { rawQuiz } from '../fixtures/assessments.js'
+import { page, quizHandler, rawQuiz } from '../fixtures/assessments.js'
 import { http } from 'msw'
 
 configure({ asyncUtilTimeout: 5000 })
@@ -22,7 +22,7 @@ const location = () => screen.getByTestId('location').textContent
 
 function openAt(path, backend, ...extra) {
   const rec = recorder()
-  server.use(...sessionHandlers(rec), ...backend.handlers, ...extra)
+  server.use(...sessionHandlers(rec), ...backend.handlers, ...extra, quizHandler.history(page([])))
   storeRefreshToken()
   render(<TestApp path={path} />)
   return rec

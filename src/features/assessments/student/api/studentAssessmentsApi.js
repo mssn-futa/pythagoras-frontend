@@ -137,6 +137,31 @@ export async function listHistory({ page = 1, pageSize = 20, attempt, quiz } = {
 }
 
 /**
+ * The student's saved results keyed by quiz id (best effort: a failure yields an empty map,
+ * so the quiz list still works without the submitted indicator). Newest first wins.
+ */
+export async function listSubmissionsByQuiz() {
+  try {
+    const data = await listHistory({ pageSize: 100 });
+    const byQuiz = new Map();
+    for (const row of data.results) if (row.quizId !== null && !byQuiz.has(row.quizId)) byQuiz.set(row.quizId, row);
+    return byQuiz;
+  } catch {
+    return new Map();
+  }
+}
+
+/** The student's newest saved result for one quiz, or null (also null on failure). */
+export async function findSubmissionForQuiz(quizId) {
+  try {
+    const data = await listHistory({ quiz: quizId, pageSize: 5 });
+    return data.results.find((row) => row.quizId === Number(quizId)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Result of a finalized attempt: one request. With the attempt's submission_id
  * it is a direct read; otherwise a single filtered history request (?attempt=).
  */

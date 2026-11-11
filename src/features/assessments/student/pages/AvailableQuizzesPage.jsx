@@ -1,16 +1,19 @@
 import { Link, useSearchParams } from "react-router-dom";
-import { listAvailableQuizzes } from "../api/studentAssessmentsApi.js";
+import { listAvailableQuizzes, listSubmissionsByQuiz } from "../api/studentAssessmentsApi.js";
 import Pager from "../components/Pager.jsx";
 import { EmptyState, ErrorPanel, Loading, Page } from "../components/StateBlocks.jsx";
 import { useLoad } from "../hooks/useLoad.js";
-import { formatLagos, pluralize } from "../lib/format.js";
+import { describeSubmitted, formatLagos, pluralize } from "../lib/format.js";
 import { cardClass, headingClass, mutedClass, pageFromParams, primaryButton } from "../lib/ui.js";
 
 /** /dawah/quizzes — quizzes the server says are open to this student. */
 export default function AvailableQuizzesPage() {
   const [params, setParams] = useSearchParams();
   const page = pageFromParams(params);
-  const { loading, data, error, reload } = useLoad(() => listAvailableQuizzes({ page }), `page-${page}`);
+  const { loading, data, error, reload } = useLoad(async () => {
+    const [quizzes, submissions] = await Promise.all([listAvailableQuizzes({ page }), listSubmissionsByQuiz()]);
+    return { ...quizzes, submissions };
+  }, `page-${page}`);
 
   if (loading) return <Page><Loading label="Loading quizzes…" /></Page>;
   if (error) return <Page><ErrorPanel error={error} onRetry={reload} title="We couldn't load quizzes" /></Page>;
@@ -30,7 +33,9 @@ export default function AvailableQuizzesPage() {
         <EmptyState title="No quizzes are open right now">Check back later. Quizzes that are closed or past their deadline are not listed.</EmptyState>
       ) : (
         <ul className="space-y-3">
-          {data.results.map((quiz) => (
+          {data.results.map((quiz) => {
+            const submitted = data.submissions.get(quiz.id);
+            return (
             <li key={quiz.id} className={`${cardClass} !py-5`}>
               <h2 className="text-lg font-semibold text-[#1F2937] dark:text-white break-words">{quiz.title}</h2>
               {quiz.description && <p className={`${mutedClass} mt-1 break-words`}>{quiz.description}</p>}
@@ -39,11 +44,25 @@ export default function AvailableQuizzesPage() {
                 {quiz.totalPoints !== null && <div>{pluralize(quiz.totalPoints, "point")}</div>}
                 <div>Closes {formatLagos(quiz.deadline)}</div>
               </dl>
-              <Link to={`/dawah/quizzes/${quiz.id}`} className={`${primaryButton} mt-4`} aria-label={`View ${quiz.title}`}>
-                View quiz
-              </Link>
+              {submitted && (
+                <p className="mt-3 inline-block rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-[#1F5A24] dark:bg-green-900/40 dark:text-green-300">
+                  {describeSubmitted(submitted)}
+                </p>
+              )}
+              <div>
+                {submitted ? (
+                  <Link to={`/profile/results/${submitted.id}`} className={`${primaryButton} mt-4`} aria-label={`View result for ${quiz.title}`}>
+                    View result
+                  </Link>
+                ) : (
+                  <Link to={`/dawah/quizzes/${quiz.id}`} className={`${primaryButton} mt-4`} aria-label={`View ${quiz.title}`}>
+                    View quiz
+                  </Link>
+                )}
+              </div>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
       <Pager

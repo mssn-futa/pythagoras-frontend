@@ -117,7 +117,7 @@ function Roster({ id }) {
                 update({ search: term.trim(), page: 1 });
               }}
             >
-              <input aria-label="Search students" value={term} onChange={(event) => setTerm(event.target.value)} placeholder="Name or email" className={inputClass(false)} />
+              <input aria-label="Search students" value={term} onChange={(event) => setTerm(event.target.value)} placeholder="Filter roster by name or email" className={inputClass(false)} />
               <button type="submit" className={secondaryButton}>
                 Search
               </button>
@@ -240,6 +240,10 @@ function AddStudent({ classId, onAdded, onFailed }) {
 
   return (
     <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
+      <div>
+        <h3 className="text-base font-semibold text-gray-800">Add a student to this class</h3>
+        <p className="text-sm text-gray-600">Search all students, then enroll them. This does not filter the roster below.</p>
+      </div>
       <form onSubmit={find} role="search" aria-label="Enroll a student" className="flex flex-col gap-3 sm:flex-row">
         <input aria-label="Find a student to enroll" value={term} onChange={(event) => setTerm(event.target.value)} placeholder="Find a student by name, email or matric number" className={inputClass(false)} />
         <button type="submit" className={primaryButton} disabled={searching}>

@@ -117,6 +117,7 @@ describe('create draft', () => {
     expect(backend.state.calls.filter((call) => !(call.method === 'GET' && call.path === '/quiz/classes/'))).toEqual([])
 
     await actor.type(screen.getByLabelText('Title'), 'T')
+    expect(screen.queryByText('Enter a title.')).toBeNull()
     await actor.type(screen.getByLabelText(/Time limit/), '500')
     await actor.click(screen.getByRole('button', { name: 'Save draft' }))
     expect(screen.getByText(/from 1 to 180/)).toBeVisible()

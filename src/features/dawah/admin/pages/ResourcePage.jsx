@@ -1,5 +1,5 @@
-import { useCallback, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import AudioUploadPanel from "../components/AudioUploadPanel.jsx";
 import DocumentUploadPanel from "../components/DocumentUploadPanel.jsx";
 import VideoLinkPanel from "../components/VideoLinkPanel.jsx";
@@ -69,6 +69,9 @@ function ResourceDetail({ eventId, resourceId }) {
   const audioUpload = useAudioUpload({ eventId, resourceId, resource, onResourceChange: resourceState.reload });
   const documentUpload = useDocumentUpload({ eventId, resourceId, resource, onResourceChange: resourceState.reload });
   const uploading = audioUpload.busy || documentUpload.busy;
+  useEffect(() => {
+    if (uploading) setNotice(null);
+  }, [uploading]);
   if (resourceState.loading && !resource) return <Loading label="Loading resource…" />;
   if (resourceState.error) return <ErrorState error={resourceState.error} onRetry={resourceState.reload} title="Could not load this resource" />;
 
@@ -91,6 +94,7 @@ function ResourceDetail({ eventId, resourceId }) {
   };
 
   const published = resource.status === "published";
+  const eventNotPublished = Boolean(event) && event.status !== "published";
   const isAudio = resource.type === "aud";
   const isVideo = resource.type === "vid";
   const isDocument = resource.type === "doc";
@@ -180,7 +184,10 @@ function ResourceDetail({ eventId, resourceId }) {
               : `Publishing needs a ready ${isDocument ? "document" : "audio file"} and a published event. The server checks both.`}
         </p>
         {event && event.status !== "published" && !published && (
-          <p className="mt-2 text-sm text-amber-800 dark:text-amber-300">The event is {event.status}. Publish the event before publishing this resource.</p>
+          <p id="publish-blocked-hint" className="mt-2 text-sm text-amber-800 dark:text-amber-300">
+            The event is {event.status}. Publish the event before publishing this resource. The publish button is disabled until then.{" "}
+            <Link to={`/admin/events/${eventId}`} className="font-medium underline">Go to the event</Link>
+          </p>
         )}
         {uploading && <p className="mt-2 text-sm text-amber-800 dark:text-amber-300">An upload is in progress. Publication actions are unavailable until it finishes or is cancelled.</p>}
         <div className="mt-3 flex flex-wrap gap-2">
@@ -194,7 +201,7 @@ function ResourceDetail({ eventId, resourceId }) {
               onConfirm={() => run(() => unpublishResource(eventId, resourceId), "Resource unpublished.")}
             />
           ) : (
-            <button type="button" className={primaryButton} disabled={busy || uploading} onClick={() => run(() => publishResource(eventId, resourceId), "Resource published.")}>
+            <button type="button" className={primaryButton} disabled={busy || uploading || (eventNotPublished && !published)} aria-describedby={eventNotPublished ? "publish-blocked-hint" : undefined} onClick={() => run(() => publishResource(eventId, resourceId), "Resource published.")}>
               {resource.status === "unpublished" ? "Republish resource" : "Publish resource"}
             </button>
           )}

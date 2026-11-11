@@ -23,8 +23,7 @@ export function formatClock(seconds) {
 
 export function formatDurationLabel(seconds) {
   if (!Number.isFinite(seconds) || seconds <= 0) return ''
-  const minutes = Math.max(1, Math.round(seconds / 60))
-  return `${minutes} min`
+  return formatClock(seconds)
 }
 
 /** Bytes -> "840 KiB" / "1.2 MiB". Unknown/invalid -> ''. */
