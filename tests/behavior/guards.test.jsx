@@ -7,8 +7,13 @@ import { hasRole, isAdmin } from '../../src/features/auth/roles.js'
 import { server } from '../mocks/server.js'
 import { admin, ok, recorder, resetSession, sessionHandlers, storeRefreshToken, student, url, useApiOrigin } from '../fixtures/auth.js'
 import { TestApp } from '../fixtures/TestApp.jsx'
+import { adminDashboardHandlers, studentDashboardHandlers } from '../fixtures/dashboard.js'
 
 beforeEach(useApiOrigin)
+// Guarded landings render the live dashboards (PLAT-07); give their sources answers.
+beforeEach(() => server.use(...studentDashboardHandlers().handlers, ...adminDashboardHandlers().handlers))
+// Let in-flight dashboard requests settle before handlers are reset, so none leaks into the next test.
+afterEach(() => vi.waitFor(() => expect(screen.queryAllByText(/^Loading/)).toHaveLength(0)))
 afterEach(resetSession)
 
 const location = () => screen.getByTestId('location').textContent
@@ -150,7 +155,7 @@ describe('route guards', () => {
   test('admins land on /admin by default after sign-in', async () => {
     render(<TestApp path="/sign-in" />)
     await signInAs(admin)
-    expect(await screen.findByRole('heading', { name: 'Welcome to Admin Dashboard' })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: 'Admin dashboard' })).toBeVisible()
     expect(location()).toBe('/admin')
   })
 
@@ -158,14 +163,14 @@ describe('route guards', () => {
     restoreAs(student)
     render(<TestApp path="/admin" />)
     expect(await screen.findByRole('heading', { name: 'Access denied' })).toBeVisible()
-    expect(screen.queryByRole('heading', { name: 'Welcome to Admin Dashboard' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Admin dashboard' })).not.toBeInTheDocument()
     expect(location()).toBe('/admin')
   })
 
   test('admins reach admin routes', async () => {
     restoreAs(admin)
     render(<TestApp path="/admin" />)
-    expect(await screen.findByRole('heading', { name: 'Welcome to Admin Dashboard' })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: 'Admin dashboard' })).toBeVisible()
   })
 
   test('signed-in users visiting sign-in are sent to their destination', async () => {
@@ -186,9 +191,10 @@ describe('route guards', () => {
     restoreAs(student)
     render(<TestApp path="/" />)
     await screen.findByText(/Assalamu Alaykum/)
-    const links = screen.getAllByRole('link').map((link) => link.getAttribute('href'))
-    expect(links).toEqual(expect.arrayContaining(['/', '/profile']))
-    for (const hidden of ['/dawah', '/academics', '/empowerment', '/admin']) expect(links).not.toContain(hidden)
+    const nav = screen.getByRole('navigation', { name: 'Primary' })
+    const links = [...nav.querySelectorAll('a')].map((link) => link.getAttribute('href'))
+    expect(links).toEqual(['/', '/dawah', '/dawah/quizzes', '/dawah/classes', '/profile/results', '/profile'])
+    for (const hidden of ['/academics', '/empowerment', '/admin']) expect(links).not.toContain(hidden)
     expect(screen.queryByText(/verif/i)).not.toBeInTheDocument()
   })
 })
