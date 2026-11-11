@@ -16,7 +16,9 @@ import {
 import logo from "../../assets/logo.png";
 import { useAuth } from "../../features/auth/AuthContext.js";
 import { useSignOut } from "../../features/auth/useSignOut.js";
-import RouteBoundary from "../../routes/RouteBoundary.jsx";
+import RouteBoundary, { PageLoadingIndicator } from "../../routes/RouteBoundary.jsx";
+import { usePageLoading } from "../../routes/lazyPage.js";
+import { usePreloadLinkProps } from "../../routes/routePreload.js";
 import { ADMIN_MENU_ID, ADMIN_NAV, ADMIN_SECONDARY_NAV } from "./navigation.js";
 import { useMobileMenu } from "./useMobileMenu.js";
 
@@ -40,8 +42,9 @@ const linkClass = (active) =>
 function NavItem({ item, pathname, onNavigate }) {
   const Icon = ICONS[item.id];
   const active = item.match(pathname);
+  const preloadProps = usePreloadLinkProps();
   return (
-    <Link to={item.to} aria-current={active ? "page" : undefined} className={linkClass(active)} onClick={onNavigate}>
+    <Link to={item.to} aria-current={active ? "page" : undefined} className={linkClass(active)} onClick={onNavigate} {...preloadProps(item.to)}>
       {Icon && <Icon size={20} aria-hidden="true" />}
       <span className="font-medium">{item.label}</span>
     </Link>
@@ -49,7 +52,8 @@ function NavItem({ item, pathname, onNavigate }) {
 }
 
 const AdminLayout = () => {
-  const { open: menuOpen, toggle: toggleMenu, close: closeMenu, toggleRef, panelRef, hiddenOffCanvas } = useMobileMenu("(min-width: 1024px)");
+  const { open: menuOpen, toggle: toggleMenu, close: closeMenu, toggleRef, panelRef, hiddenOffCanvas, pageInert } = useMobileMenu("(min-width: 1024px)");
+  const pageLoading = usePageLoading();
   const { pathname } = useLocation();
   const { user } = useAuth();
   const { signOut, signingOut } = useSignOut();
@@ -58,21 +62,24 @@ const AdminLayout = () => {
 
   return (
     <section className="min-h-screen bg-gray-50">
+      <PageLoadingIndicator />
       <a
         href="#admin-main"
+        inert={pageInert}
         className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[60] focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-emerald-700 focus:shadow"
       >
         Skip to content
       </a>
 
-      <header className="lg:hidden bg-white border-b border-gray-200 p-4 flex items-center justify-between sticky top-0 z-30">
+      {/* While the drawer is open (small screens) the page behind it is inert; the drawer has its own close button. */}
+      <header inert={pageInert} className="lg:hidden bg-white border-b border-gray-200 p-4 flex items-center justify-between sticky top-0 z-30">
         <section className="flex items-center gap-3 min-w-0">
           <button
             type="button"
             ref={toggleRef}
             onClick={toggleMenu}
             className="p-1 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-            aria-label="Open admin menu"
+            aria-label={menuOpen ? "Close admin menu" : "Open admin menu"}
             aria-expanded={menuOpen}
             aria-controls={ADMIN_MENU_ID}
           >
@@ -142,7 +149,7 @@ const AdminLayout = () => {
 
       {menuOpen && <div className="lg:hidden fixed inset-0 bg-black/50 z-40" aria-hidden="true" onClick={() => closeMenu()} />}
 
-      <section className="lg:ml-64">
+      <section className="lg:ml-64" inert={pageInert}>
         <header className="hidden lg:flex bg-white border-b border-gray-200 px-8 py-4 items-center justify-end sticky top-0 z-20">
           <section className="flex items-center gap-2 rounded-lg px-3 py-2">
             <span className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold" aria-hidden="true">
@@ -152,7 +159,7 @@ const AdminLayout = () => {
           </section>
         </header>
 
-        <main id="admin-main" tabIndex={-1} className="p-4 lg:p-8 focus:outline-none">
+        <main id="admin-main" tabIndex={-1} aria-busy={pageLoading} className="p-4 lg:p-8 focus:outline-none">
           <RouteBoundary>
             <Outlet />
           </RouteBoundary>

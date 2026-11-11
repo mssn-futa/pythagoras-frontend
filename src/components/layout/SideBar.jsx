@@ -11,12 +11,12 @@ import {
   faUser,
   faUserPlus,
   faUserShield,
-  faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import { useAuth } from "../../features/auth/AuthContext.js";
 import { useSignOut } from "../../features/auth/useSignOut.js";
 import logo from "../../assets/logo.png";
 import profilePic from "../../assets/profile.png";
+import { usePreloadLinkProps } from "../../routes/routePreload.js";
 import { STUDENT_MENU_ID, studentNavFor } from "./navigation.js";
 
 const ICONS = {
@@ -34,7 +34,8 @@ const ICONS = {
  * the NavBar; `hidden` (closed on a small screen) makes it inert.
  */
 const SideBar = ({ isOpen, onClose, hidden = false, panelRef }) => {
-  const { user, isAuthenticated, isAdmin } = useAuth();
+  const { user, status, isAuthenticated, isAdmin } = useAuth();
+  const preloadProps = usePreloadLinkProps();
   const { signOut, signingOut } = useSignOut();
   const { pathname } = useLocation();
   const fullName = [user?.first_name, user?.last_name].filter(Boolean).join(" ");
@@ -50,7 +51,7 @@ const SideBar = ({ isOpen, onClose, hidden = false, panelRef }) => {
         p-5 flex flex-col transition-transform duration-300 z-50 overflow-y-auto
         ${isOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
     >
-      <div className="flex items-start justify-between gap-2 mb-8">
+      <div className="flex items-start gap-2 mb-8">
         <Link to={isAuthenticated ? "/" : "/dawah"} className="flex items-center gap-3 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2A742F]">
           <img src={logo} alt="" className="h-12" />
           <span>
@@ -58,24 +59,33 @@ const SideBar = ({ isOpen, onClose, hidden = false, panelRef }) => {
             <span className="block text-sm mt-1 text-[#6B7280] dark:text-[#FFFFFF]">Muslim Students Hub</span>
           </span>
         </Link>
-        <button
-          type="button"
-          onClick={() => onClose({ restoreFocus: true })}
-          className="md:hidden p-2 rounded-md text-gray-700 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2A742F]"
-          aria-label="Close menu"
-        >
-          <FontAwesomeIcon icon={faXmark} />
-        </button>
       </div>
 
       {/* Links sit directly in the landmark (no list markup), so page-level list queries stay page-scoped. */}
       <nav aria-label="Primary" className="flex-1 flex flex-col gap-2">
         {items.map((item) => (
-          <SideBarLink key={item.id} icon={ICONS[item.id]} label={item.label} to={item.to} active={item.match(pathname)} onClick={() => onClose()} />
+          <SideBarLink
+            key={item.id}
+            icon={ICONS[item.id]}
+            label={item.label}
+            to={item.to}
+            active={item.match(pathname)}
+            onClick={() => onClose()}
+            {...preloadProps(item.to)}
+          />
         ))}
       </nav>
 
-      {isAuthenticated ? (
+      {status === "restoring" ? (
+        // The session is still being restored: claim neither "signed in" nor "signed out" yet.
+        <div className="mt-auto pt-6 space-y-3" aria-hidden="true" data-testid="session-skeleton">
+          <div className="flex items-center gap-3">
+            <span className="h-10 w-10 rounded-full bg-gray-200 dark:bg-gray-800 animate-pulse" />
+            <span className="h-4 flex-1 rounded bg-gray-200 dark:bg-gray-800 animate-pulse" />
+          </div>
+          <span className="block h-10 rounded-lg bg-gray-200 dark:bg-gray-800 animate-pulse" />
+        </div>
+      ) : isAuthenticated ? (
         <div className="mt-auto pt-6 space-y-4">
           <div className="flex items-center gap-3">
             <img src={profilePic} alt="" className="h-10 w-10 rounded-full" />
@@ -118,10 +128,11 @@ const SideBar = ({ isOpen, onClose, hidden = false, panelRef }) => {
   );
 };
 
-const SideBarLink = ({ icon, label, to, active, onClick }) => (
+const SideBarLink = ({ icon, label, to, active, onClick, ...preload }) => (
   <Link
     to={to}
     onClick={onClick}
+    {...preload}
     aria-current={active ? "page" : undefined}
     className={`group flex items-center gap-3 p-2 rounded-lg transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2A742F] ${
       active

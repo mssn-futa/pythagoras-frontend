@@ -66,6 +66,23 @@ describe('student and public navigation', () => {
     expectNoPrototypeLinks()
   })
 
+  test('while the session is restoring the sidebar claims neither signed-in nor signed-out', async () => {
+    let releaseMe
+    const meGate = new Promise((resolve) => { releaseMe = resolve })
+    const [refresh] = sessionHandlers(recorder(), student)
+    server.use(refresh, http.get(url('/accounts/me/'), async () => { await meGate; return ok(student) }))
+    server.use(...studentDashboardHandlers().handlers, http.get(url('/dawah/archive/'), () => ok(emptyPage)))
+    storeRefreshToken()
+    render(<TestApp path="/dawah" />)
+    expect(await screen.findByTestId('session-skeleton')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Sign in' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Sign up' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
+    releaseMe()
+    expect(await screen.findByRole('button', { name: 'Sign out' })).toBeVisible()
+    expect(screen.queryByTestId('session-skeleton')).not.toBeInTheDocument()
+  })
+
   test('students get every mounted Phase 1 destination, highlighted by section', async () => {
     restoreAs(student)
     useDashboards()
@@ -106,15 +123,29 @@ describe('student and public navigation', () => {
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
     expect(panel).toHaveAttribute('inert')
 
+    expect(screen.getByRole('main')).not.toHaveAttribute('inert')
+
     await user.click(toggle)
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(toggle).toHaveAccessibleName('Close menu')
     expect(panel).not.toHaveAttribute('inert')
+    // The page behind the open menu is inert; the toggle itself stays usable.
+    expect(screen.getByRole('main')).toHaveAttribute('inert')
+    expect(screen.getByRole('button', { name: 'Dark mode' })).toHaveAttribute('inert')
+    expect(toggle).not.toHaveAttribute('inert')
     await waitFor(() => expect(panel.contains(document.activeElement)).toBe(true))
 
     await user.keyboard('{Escape}')
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(toggle).toHaveAccessibleName('Open menu')
     expect(panel).toHaveAttribute('inert')
-    expect(toggle).toHaveFocus()
+    expect(screen.getByRole('main')).not.toHaveAttribute('inert')
+    await waitFor(() => expect(toggle).toHaveFocus())
+
+    // The toggle closes the menu too.
+    await user.click(toggle)
+    await user.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
 
     await user.click(toggle)
     await waitFor(() => expect(panel).not.toHaveAttribute('inert'))
@@ -147,7 +178,7 @@ describe('admin navigation', () => {
     expect(within(nav).getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current')
   })
 
-  test('the mobile admin menu toggles, traps nothing when closed and closes on Escape', async () => {
+  test('the mobile admin menu is inert when closed, makes the page inert when open, and closes on Escape', async () => {
     mobileViewport()
     restoreAs(admin)
     useAdminDashboard()
@@ -159,10 +190,15 @@ describe('admin navigation', () => {
     expect(panel).toHaveAttribute('inert')
     await user.click(toggle)
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(toggle).toHaveAccessibleName('Close admin menu')
     expect(panel).not.toHaveAttribute('inert')
+    // The header (with the toggle, now under the drawer) and the page are inert while it is open.
+    expect(toggle.closest('header')).toHaveAttribute('inert')
+    expect(screen.getByRole('main').closest('[inert]')).not.toBeNull()
     await user.keyboard('{Escape}')
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
-    expect(toggle).toHaveFocus()
+    expect(toggle.closest('header')).not.toHaveAttribute('inert')
+    await waitFor(() => expect(toggle).toHaveFocus())
     await user.click(toggle)
     await user.click(within(panel).getByRole('button', { name: 'Close admin menu' }))
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
@@ -186,7 +222,7 @@ describe('student dashboard', () => {
     expect(await within(events).findByRole('link', { name: /Event 1/ })).toHaveAttribute('href', '/dawah/events/1')
     expect(within(events).getByText('20 Nov 2026, 13:00 WAT · Central mosque')).toBeVisible()
     expect(await within(panel('Available quizzes')).findByRole('link', { name: /Arabic week 1/ })).toHaveAttribute('href', '/dawah/quizzes/45')
-    expect(within(panel('Available quizzes')).getByText('Closes 30 Nov 2026, 21:00 WAT · 30 minutes')).toBeVisible()
+    expect(within(panel('Available quizzes')).getByText('Closes 30 Nov 2036, 21:00 WAT · 30 minutes')).toBeVisible()
     expect(await within(panel('Arabic classes')).findByRole('link', { name: /Arabic for beginners/ })).toHaveAttribute('href', '/dawah/classes/2')
     expect(within(panel('Arabic classes')).getByText('ARB102 · 3 modules')).toBeVisible()
     const results = panel('Recent results')
@@ -231,18 +267,31 @@ describe('student dashboard', () => {
     expect(await within(panel('Recent results')).findByText('You have not submitted a quiz yet.')).toBeVisible()
   })
 
-  test('drafts returned to an admin viewing "/" are not shown as available', async () => {
+  test('an admin viewing "/" asks for published quizzes and never sees drafts or past deadlines as available', async () => {
     restoreAs(admin)
-    useDashboards({
+    const { student: sources } = useDashboards({
       studentOverrides: {
-        quizzes: page([{ id: 1, title: 'Draft quiz', status: 'draft' }, { id: 2, title: 'Live quiz', status: 'published' }]),
+        quizzes: page([
+          { id: 1, title: 'Draft quiz', status: 'draft' },
+          { id: 2, title: 'Live quiz', status: 'published', deadline: '2036-01-01T00:00:00Z' },
+          { id: 3, title: 'Expired quiz', status: 'published', deadline: '2020-01-01T00:00:00Z' },
+        ]),
         classes: page([{ id: 3, code: 'X', title: 'Closed class', status: 'closed' }]),
       },
     })
     render(<TestApp path="/" />)
     expect(await within(await screen.findByRole('region', { name: 'Available quizzes' })).findByText('Live quiz')).toBeVisible()
     expect(screen.queryByText('Draft quiz')).not.toBeInTheDocument()
+    expect(screen.queryByText('Expired quiz')).not.toBeInTheDocument()
+    expect(sources.callsTo('/quiz/quizzes/')[0].query).toEqual({ status: 'published', page_size: '5' })
     expect(await within(panel('Arabic classes')).findByText('No Arabic classes are open yet.')).toBeVisible()
+  })
+
+  test('students never see a quiz past its deadline as available', async () => {
+    restoreAs(student)
+    useDashboards({ studentOverrides: { quizzes: page([{ id: 3, title: 'Expired quiz', status: 'published', deadline: '2020-01-01T00:00:00Z' }]) } })
+    render(<TestApp path="/" />)
+    expect(await within(await screen.findByRole('region', { name: 'Available quizzes' })).findByText('No quizzes are open right now.')).toBeVisible()
   })
 
   test('a failing source shows an error with retry on that panel only', async () => {
@@ -286,7 +335,8 @@ describe('admin dashboard', () => {
     expect(await value('Draft quizzes')).toBe('2')
     expect(await value('Closed quizzes')).toBe('5')
     expect(await value('Arabic classes')).toBe('4')
-    expect(await value('Broadcasts in progress')).toBe('3') // queued 1 + processing 2
+    expect(await value('Broadcasts in progress')).toBe('≈approximately 3') // queued 1 + processing 2, two snapshots
+    expect(within(card('Broadcasts in progress')).getByText(/Approximate: queued plus processing/)).toBeVisible()
     expect(await value('Uncertain broadcasts')).toBe('1')
     expect(await value('Automations')).toBe('2')
     expect(within(card('Automations')).getByText('enabled of 3 rules')).toBeVisible()

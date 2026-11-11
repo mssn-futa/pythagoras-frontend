@@ -11,7 +11,7 @@ export const upcomingEvent = (id, overrides = {}) => ({
   start_time: '2026-11-20T12:00:00Z', end_time: '2026-11-20T14:00:00Z', ...overrides,
 })
 export const studentQuiz = (id, overrides = {}) => ({
-  id, title: `Quiz ${id}`, description: '', time_limit: 30, deadline: '2026-11-30T20:00:00Z', status: 'published', ...overrides,
+  id, title: `Quiz ${id}`, description: '', time_limit: 30, deadline: '2036-11-30T20:00:00Z', status: 'published', ...overrides,
 })
 export const studentClass = (id, overrides = {}) => ({ id, code: `ARB10${id}`, title: `Arabic ${id}`, status: 'published', module_count: 3, ...overrides })
 export const submission = (id, overrides = {}) => ({

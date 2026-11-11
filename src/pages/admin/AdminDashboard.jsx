@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { LoadError } from "../../components/dashboard/DashboardPanel.jsx";
 import { useLiveData } from "../../components/dashboard/useLiveData.js";
 import { useAuth } from "../../features/auth/AuthContext.js";
+import { usePreloadLinkProps } from "../../routes/routePreload.js";
 import {
   countActiveStudents,
   countAutomations,
@@ -40,6 +41,7 @@ const linkClass = "text-sm font-medium text-emerald-700 hover:underline rounded 
 
 function CountCard({ label, load, link, describe, tone = "default" }) {
   const id = useId();
+  const preloadProps = usePreloadLinkProps();
   const source = useLiveData(load);
   const view = source.status === "ready" ? (describe ? describe(source.data) : { value: source.data }) : null;
   const accent = tone === "warning" && view && view.value > 0 ? "text-amber-700" : "text-gray-900";
@@ -59,6 +61,12 @@ function CountCard({ label, load, link, describe, tone = "default" }) {
         {view && (
           <>
             <p className={`text-3xl font-bold ${accent}`} data-testid="count-value">
+              {view.prefix && (
+                <>
+                  <span aria-hidden="true">{view.prefix}</span>
+                  <span className="sr-only">approximately </span>
+                </>
+              )}
               {numberFormat.format(view.value)}
             </p>
             {view.detail && <p className="mt-1 text-sm text-gray-600">{view.detail}</p>}
@@ -66,7 +74,7 @@ function CountCard({ label, load, link, describe, tone = "default" }) {
         )}
       </div>
       {link && (
-        <Link to={link.to} className={`${linkClass} mt-4`}>
+        <Link to={link.to} className={`${linkClass} mt-4`} {...preloadProps(link.to)}>
           {link.label}
         </Link>
       )}
@@ -86,6 +94,10 @@ function Section({ title, children }) {
   );
 }
 
+// Two separate list snapshots (queued, processing), so a broadcast moving between
+// them can be counted twice or missed: label the sum as approximate.
+const describeInProgress = (value) => ({ value, prefix: "≈", detail: "Approximate: queued plus processing, counted separately" });
+
 const describeAutomations = ({ total, enabled }) =>
   enabled === null
     ? { value: total, detail: "rules in total; open Automations to see which are enabled" }
@@ -104,6 +116,7 @@ const SHORTCUTS = [
 const AdminDashboard = () => {
   const { user } = useAuth();
   const name = [user?.first_name, user?.last_name].filter(Boolean).join(" ") || user?.email;
+  const preloadProps = usePreloadLinkProps();
 
   return (
     <div className="space-y-8">
@@ -131,7 +144,12 @@ const AdminDashboard = () => {
       </Section>
 
       <Section title="Communication">
-        <CountCard label="Broadcasts in progress" load={loaders.inProgress} link={{ to: "/admin/communication/history", label: "View history" }} />
+        <CountCard
+          label="Broadcasts in progress"
+          load={loaders.inProgress}
+          describe={describeInProgress}
+          link={{ to: "/admin/communication/history", label: "View history" }}
+        />
         <CountCard label="Uncertain broadcasts" tone="warning" load={loaders.uncertain} link={{ to: "/admin/communication/history", label: "Investigate in history" }} />
         <CountCard label="Automations" load={loaders.automations} describe={describeAutomations} link={{ to: "/admin/communication/automations", label: "Manage automations" }} />
       </Section>
@@ -145,6 +163,7 @@ const AdminDashboard = () => {
             <li key={shortcut.to}>
               <Link
                 to={shortcut.to}
+                {...preloadProps(shortcut.to)}
                 className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
               >
                 {shortcut.label}

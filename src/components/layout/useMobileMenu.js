@@ -21,7 +21,9 @@ export function useMediaQuery(query, fallback = true) {
  * - closes on navigation and on Escape (returning focus to the toggle);
  * - moves focus into the menu when it opens;
  * - while closed on a small screen the panel is `inert`, so its off-screen
- *   links are not reachable by Tab or assistive technology.
+ *   links are not reachable by Tab or assistive technology;
+ * - while open on a small screen the page behind it is `inert` (`pageInert`),
+ *   so focus and assistive technology stay in the menu.
  */
 export function useMobileMenu(desktopQuery) {
   const [open, setOpen] = useState(false);
@@ -36,13 +38,19 @@ export function useMobileMenu(desktopQuery) {
     if (open) setOpen(false);
   }
 
+  const restoreFocusRef = useRef(false);
   const close = useCallback(({ restoreFocus = false } = {}) => {
+    restoreFocusRef.current = restoreFocus;
     setOpen(false);
-    if (restoreFocus) toggleRef.current?.focus();
   }, []);
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open) {
+      // After the commit: the page behind the menu (toggle included) is no longer inert.
+      if (restoreFocusRef.current) toggleRef.current?.focus();
+      restoreFocusRef.current = false;
+      return undefined;
+    }
     panelRef.current?.querySelector("a, button")?.focus();
     const onKey = (event) => {
       if (event.key === "Escape") close({ restoreFocus: true });
@@ -59,5 +67,6 @@ export function useMobileMenu(desktopQuery) {
     toggleRef,
     panelRef,
     hiddenOffCanvas: !open && !isDesktop,
+    pageInert: open && !isDesktop,
   };
 }

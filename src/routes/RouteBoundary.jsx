@@ -1,12 +1,29 @@
 import { Component, Suspense } from "react";
 import { useLocation } from "react-router-dom";
 import { isChunkLoadError } from "./chunkError.js";
+import { usePageLoading } from "./lazyPage.js";
 
 export function RouteLoading({ label = "Loading page…", className = "" }) {
   return (
     <div role="status" aria-live="polite" className={`flex items-center justify-center gap-3 py-16 text-sm text-gray-600 dark:text-gray-300 ${className}`}>
       <span className="h-5 w-5 rounded-full border-2 border-[#2A742F] border-t-transparent animate-spin" aria-hidden="true" />
       <span>{label}</span>
+    </div>
+  );
+}
+
+/**
+ * Navigation runs in a transition, so the previous page stays visible while the
+ * next page's chunk downloads. This shows that something is happening: a thin
+ * progress bar plus an announced "Loading page…" status.
+ */
+export function PageLoadingIndicator() {
+  const loading = usePageLoading();
+  if (!loading) return null;
+  return (
+    <div role="status" aria-live="polite" data-testid="page-loading" className="fixed inset-x-0 top-0 z-[70] h-1 overflow-hidden bg-green-100">
+      <div className="h-full w-1/3 animate-pulse bg-[#2A742F]" aria-hidden="true" />
+      <span className="sr-only">Loading page…</span>
     </div>
   );
 }

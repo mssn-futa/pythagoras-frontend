@@ -44,7 +44,7 @@ async function mockApi(browserPage, { user, failQuizzes = false } = {}) {
       case '/quiz/quizzes/':
         if (failQuizzes) return reply(route, 503, { code: 'SERVICE_UNAVAILABLE' }, 'Assessments are temporarily unavailable.')
         if (q.status) return reply(route, 200, page([], { published: 3, draft: 2, closed: 5 }[q.status]))
-        return reply(route, 200, page([{ id: 45, title: 'Arabic week 1', time_limit: 30, deadline: '2026-11-30T20:00:00Z', status: 'published' }]))
+        return reply(route, 200, page([{ id: 45, title: 'Arabic week 1', time_limit: 30, deadline: '2036-11-30T20:00:00Z', status: 'published' }]))
       case '/quiz/classes/':
         if (q.page_size === '1') return reply(route, 200, page([], 4))
         return reply(route, 200, page([{ id: 2, code: 'ARB101', title: 'Arabic for beginners', status: 'published', module_count: 3 }]))
@@ -98,16 +98,30 @@ test('student dashboard: live panels, independent error, working navigation', as
   const nav = browserPage.getByRole('navigation', { name: 'Primary' })
   if (isMobile) {
     await expect(nav).not.toBeInViewport()
-    const toggle = browserPage.getByRole('button', { name: 'Open menu' })
+    const toggle = browserPage.locator('button[aria-controls="student-navigation"]')
     await toggle.click()
     await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    await expect(toggle).toHaveAccessibleName('Close menu')
+    await expect(browserPage.getByRole('main')).toHaveAttribute('inert', '')
     await expect(nav).toBeInViewport()
     await expectDrawerSettled(browserPage.locator('#student-navigation'))
     await browserPage.screenshot({ path: testInfo.outputPath('student-menu-open.png') })
   }
   await expect(nav.getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page')
+  // Hold the class catalogue's code back: the navigation runs in a transition, so the
+  // dashboard stays up while a pending status says the next page is loading.
+  let releaseChunk
+  const chunkGate = new Promise((resolve) => { releaseChunk = resolve })
+  await browserPage.route(/ClassCatalogPage[-.][^/]*$/, async (route) => { await chunkGate; await route.continue() })
   await nav.getByRole('link', { name: 'Arabic classes' }).click()
+  await expect(browserPage.getByTestId('page-loading')).toHaveText('Loading page…')
+  await expect(browserPage.getByRole('main')).toHaveAttribute('aria-busy', 'true')
+  await expect(browserPage.getByRole('heading', { name: 'Welcome, Amina' })).toBeVisible()
+  await browserPage.screenshot({ path: testInfo.outputPath('student-navigation-pending.png') })
+  releaseChunk()
   await expect(browserPage).toHaveURL('/dawah/classes')
+  await expect(browserPage.getByTestId('page-loading')).toHaveCount(0)
+  await expect(browserPage.getByRole('main')).toHaveAttribute('aria-busy', 'false')
   await expect(browserPage.getByRole('link', { name: /Arabic for beginners/ }).first()).toBeVisible()
   if (isMobile) await expect(browserPage.getByRole('button', { name: 'Open menu' })).toHaveAttribute('aria-expanded', 'false')
   else await expect(nav.getByRole('link', { name: 'Arabic classes' })).toHaveAttribute('aria-current', 'page')
@@ -123,7 +137,7 @@ test('admin dashboard: live counts, shortcuts and admin navigation', async ({ pa
   await expect(card('Published events').getByTestId('count-value')).toHaveText('7')
   await expect(card('Draft quizzes').getByTestId('count-value')).toHaveText('2')
   await expect(card('Arabic classes').getByTestId('count-value')).toHaveText('4')
-  await expect(card('Broadcasts in progress').getByTestId('count-value')).toHaveText('3')
+  await expect(card('Broadcasts in progress').getByTestId('count-value')).toHaveText('≈approximately 3')
   await expect(card('Uncertain broadcasts').getByTestId('count-value')).toHaveText('0')
   await expect(card('Automations').getByTestId('count-value')).toHaveText('1')
   await expect(card('Automations')).toContainText('enabled of 2 rules')
@@ -133,8 +147,9 @@ test('admin dashboard: live counts, shortcuts and admin navigation', async ({ pa
 
   const nav = browserPage.getByRole('navigation', { name: 'Admin sections' })
   if (isMobile) {
-    const toggle = browserPage.getByRole('button', { name: 'Open admin menu' })
+    const toggle = browserPage.locator('button[aria-controls="admin-navigation"]')
     await toggle.click()
+    await expect(toggle).toHaveAccessibleName('Close admin menu')
     await expect(nav).toBeInViewport()
     await expectDrawerSettled(browserPage.locator('#admin-navigation'))
     await browserPage.screenshot({ path: testInfo.outputPath('admin-menu-open.png') })

@@ -1,5 +1,5 @@
-import { lazyPage } from "./routes/lazyPage.js";
-import { Route, Routes } from "react-router-dom";
+import { useContext } from "react";
+import { Route, Routes, useLocation } from "react-router-dom";
 import Layout from "./components/layout/Layout";
 import { RedirectIfAuthenticated, RequireAdmin, RequireAuth } from "./features/auth/guards.jsx";
 import Login from "./pages/login/Login";
@@ -7,17 +7,19 @@ import NotFound from "./pages/notFound/NotFound";
 import RouteBoundary from "./routes/RouteBoundary.jsx";
 import { renderRoutes, splitPublicRoutes } from "./routes/renderRoutes.jsx";
 import { adminSlotRoutes, studentSlotRoutes } from "./routes/slots.js";
+// Route-level code splitting (PLAT-07): page components come from routes/pages.js
+// (lazy chunks). Guards and the student layout stay eager, so no page renders
+// before its guard decides; the admin layout loads only behind RequireAdmin.
+import { AdminDashboard, AdminLayout, Homepage, Profile, Register, StudentDashboard } from "./routes/pages.js";
+import { preloadPath, preloadTreeFor, RoutePreloadContext } from "./routes/routePreload.js";
 
-// Route-level code splitting (PLAT-07). Sign-in and Not found stay in the entry
-// chunk (first screen for anonymous visitors); every other page loads on demand.
-// Guards and the student layout stay eager, so no page renders before its guard
-// decides; the admin layout (admin-only code) loads behind RequireAdmin.
-const AdminLayout = lazyPage(() => import("./components/layout/AdminLayout"));
-const AdminDashboard = lazyPage(() => import("./pages/admin/AdminDashboard"));
-const StudentDashboard = lazyPage(() => import("./pages/admin/student/StudentDashboard"));
-const Profile = lazyPage(() => import("./pages/profile/Profile"));
-const Register = lazyPage(() => import("./pages/register/Register"));
-const Homepage = lazyPage(() => import("./pages/student/HomePage"));
+/** Admin branch: fetches the matched admin page's chunk in parallel with the admin layout chunk. */
+function AdminArea() {
+  const tree = useContext(RoutePreloadContext);
+  const { pathname } = useLocation();
+  preloadPath(tree, pathname); // idempotent: only starts (or reuses) chunk downloads
+  return <AdminLayout />;
+}
 
 /*
  * Root routing (owned by PLAT-04). Domain packages add pages ONLY through
@@ -29,39 +31,42 @@ const Homepage = lazyPage(() => import("./pages/student/HomePage"));
  */
 export function AppRoutes({ adminRoutes = adminSlotRoutes, studentRoutes = studentSlotRoutes }) {
   const { publicRoutes, protectedRoutes } = splitPublicRoutes(studentRoutes);
+  const preloadTree = preloadTreeFor(studentRoutes, adminRoutes);
   return (
-    <RouteBoundary>
-      <Routes>
-        <Route element={<RedirectIfAuthenticated />}>
-          <Route path="/sign-in" element={<Login />} />
-          <Route path="/sign-up" element={<Register />} />
-        </Route>
-
-        <Route element={<RequireAuth />}>
-          <Route path="/" element={<Layout />}>
-            <Route index element={<Homepage />} />
-            <Route path="profile" element={<Profile />} />
-            {renderRoutes(protectedRoutes, "student")}
+    <RoutePreloadContext value={preloadTree}>
+      <RouteBoundary>
+        <Routes>
+          <Route element={<RedirectIfAuthenticated />}>
+            <Route path="/sign-in" element={<Login />} />
+            <Route path="/sign-up" element={<Register />} />
           </Route>
-        </Route>
 
-        {publicRoutes.length > 0 && (
-          <Route path="/" element={<Layout />}>
-            {renderRoutes(publicRoutes, "public")}
+          <Route element={<RequireAuth />}>
+            <Route path="/" element={<Layout />}>
+              <Route index element={<Homepage />} />
+              <Route path="profile" element={<Profile />} />
+              {renderRoutes(protectedRoutes, "student")}
+            </Route>
           </Route>
-        )}
 
-        <Route path="/admin" element={<RequireAdmin />}>
-          <Route element={<AdminLayout />}>
-            <Route index element={<AdminDashboard />} />
-            <Route path="students" element={<StudentDashboard />} />
-            {renderRoutes(adminRoutes, "admin")}
+          {publicRoutes.length > 0 && (
+            <Route path="/" element={<Layout />}>
+              {renderRoutes(publicRoutes, "public")}
+            </Route>
+          )}
+
+          <Route path="/admin" element={<RequireAdmin />}>
+            <Route element={<AdminArea />}>
+              <Route index element={<AdminDashboard />} />
+              <Route path="students" element={<StudentDashboard />} />
+              {renderRoutes(adminRoutes, "admin")}
+            </Route>
           </Route>
-        </Route>
 
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </RouteBoundary>
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </RouteBoundary>
+    </RoutePreloadContext>
   );
 }
 

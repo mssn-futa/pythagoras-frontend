@@ -1,11 +1,13 @@
 import { Link } from "react-router-dom";
 import DashboardPanel from "../../components/dashboard/DashboardPanel.jsx";
 import { useLiveData } from "../../components/dashboard/useLiveData.js";
+import { listQuizzes as listQuizzesAsAdmin } from "../../features/assessments/admin/adminQuizService.js";
 import { listAvailableQuizzes, listHistory } from "../../features/assessments/student/api/studentAssessmentsApi.js";
 import { listClasses } from "../../features/assessments/student/classes/api/classesApi.js";
 import { describeScore, formatLagos, pluralize } from "../../features/assessments/student/lib/format.js";
 import { useAuth } from "../../features/auth/AuthContext.js";
 import { listUpcomingEvents } from "../../features/dawah/public/api/dawahPublicService.js";
+import { usePreloadLinkProps } from "../../routes/routePreload.js";
 
 /*
  * Student dashboard (D1 "Frontend Design", PLAT-07). Every panel shows live
@@ -19,9 +21,20 @@ import { listUpcomingEvents } from "../../features/dawah/public/api/dawahPublicS
 const isOpen = (item) => item.status === null || item.status === undefined || item.status === "published";
 
 const loadEvents = () => listUpcomingEvents({ pageSize: 5 }); // public: true, no bearer
+// A quiz is "available" only while open: published (or unstated for the student
+// endpoint, which only returns open quizzes) and not past its deadline.
+const notPastDeadline = (quiz) => {
+  const deadline = quiz.deadline ? Date.parse(quiz.deadline) : NaN;
+  return !Number.isFinite(deadline) || deadline > Date.now();
+};
 const loadQuizzes = async () => {
   const page = await listAvailableQuizzes({ pageSize: 5 });
-  return page.results.filter(isOpen);
+  return page.results.filter((quiz) => isOpen(quiz) && notPastDeadline(quiz));
+};
+// The same endpoint lists every status for an admin, so ask for published ones explicitly.
+const loadQuizzesForAdmin = async () => {
+  const page = await listQuizzesAsAdmin({ status: "published", pageSize: 5 });
+  return page.results.filter((quiz) => quiz.status === "published" && notPastDeadline(quiz));
 };
 const loadClasses = async () => {
   const page = await listClasses({ pageSize: 5 });
@@ -74,9 +87,10 @@ function IdentityCard({ user }) {
 }
 
 export default function Homepage() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
+  const preloadProps = usePreloadLinkProps();
   const events = useLiveData(loadEvents);
-  const quizzes = useLiveData(loadQuizzes);
+  const quizzes = useLiveData(isAdmin ? loadQuizzesForAdmin : loadQuizzes);
   const classes = useLiveData(loadClasses);
   const results = useLiveData(loadResults);
 
@@ -196,7 +210,7 @@ export default function Homepage() {
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {SHORTCUTS.map((shortcut) => (
             <li key={shortcut.to}>
-              <Link to={shortcut.to} className={`${itemLink} h-full`}>
+              <Link to={shortcut.to} className={`${itemLink} h-full`} {...preloadProps(shortcut.to)}>
                 <span className={`${itemTitle} block`}>{shortcut.label}</span>
                 <span className={`${itemMeta} block`}>{shortcut.hint}</span>
               </Link>
