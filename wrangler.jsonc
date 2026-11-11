@@ -1,14 +1,18 @@
 {
-  // Workers Static Assets: serves the Vite build with no Worker script (RELEASE-04, D5).
+  // Workers Static Assets: serves the Vite build (RELEASE-04, D5). The only Worker code is worker/assets-guard.js,
+  // which runs just for /assets/* so a missing hashed file returns 404 instead of the SPA index.html.
   // Build first with `npm run build:cloudflare` so dist/_headers exists. See docs/frontend-hosting.md.
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "pythagoras-frontend",
+  "main": "./worker/assets-guard.js",
   "compatibility_date": "2026-11-01",
   "assets": {
     "directory": "./dist",
     // Unknown paths (deep links such as /admin/quizzes/1) return /index.html with 200;
     // route guards in the SPA then decide what the visitor may see.
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    "binding": "ASSETS",
+    "run_worker_first": ["/assets/*"]
   },
   "observability": { "enabled": true }
   // Custom domains/routes are account-specific and added at staging (see BLOCKED list in docs):

@@ -3,7 +3,7 @@
  * origin configuration (RELEASE-04, D5 "Deployment and origins"). Nothing here
  * is a secret: every value is a public origin that the browser already sees.
  * No hostname is hard-coded except the two third-party hosts the app uses today
- * (Google Fonts, Aladhan prayer-times API), which have env switches.
+ * (Google Fonts, and the Aladhan prayer-times API only when explicitly enabled), which have env switches.
  */
 
 export const YOUTUBE_EMBED_ORIGIN = 'https://www.youtube-nocookie.com'
@@ -67,7 +67,7 @@ export function readHostingConfig(env) {
     apiOrigin,
     mediaOrigin,
     presignOrigins,
-    prayerApiOrigin: flag(env.PUBLIC_PRAYER_API_ENABLED, true)
+    prayerApiOrigin: flag(env.PUBLIC_PRAYER_API_ENABLED, false)
       ? parseOrigin('PUBLIC_PRAYER_API_ORIGIN', env.PUBLIC_PRAYER_API_ORIGIN?.trim() || DEFAULT_PRAYER_API_ORIGIN, options)
       : null,
     googleFonts: flag(env.PUBLIC_GOOGLE_FONTS_ENABLED, true),
@@ -105,8 +105,9 @@ export function buildCsp(config) {
   return parts.join('; ')
 }
 
-export const PERMISSIONS_POLICY = [
-  'accelerometer=()', 'autoplay=(self "' + YOUTUBE_EMBED_ORIGIN + '")', 'camera=()', 'display-capture=()', 'geolocation=(self)', 'gyroscope=()',
+// Prayer times (the only geolocation user) are hidden in Phase 1 (D0), so geolocation is off unless the prayer API is enabled.
+export const permissionsPolicy = (config) => [
+  'accelerometer=()', 'autoplay=(self "' + YOUTUBE_EMBED_ORIGIN + '")', 'camera=()', 'display-capture=()', `geolocation=${config.prayerApiOrigin ? '(self)' : '()'}`, 'gyroscope=()',
   'magnetometer=()', 'microphone=()', 'midi=()', 'payment=()', 'usb=()', 'serial=()', 'hid=()', 'interest-cohort=()',
 ].join(', ')
 
@@ -121,7 +122,7 @@ export function renderHeaders(config) {
     '  X-Content-Type-Options: nosniff',
     '  X-Frame-Options: DENY',
     '  Referrer-Policy: strict-origin-when-cross-origin',
-    `  Permissions-Policy: ${PERMISSIONS_POLICY}`,
+    `  Permissions-Policy: ${permissionsPolicy(config)}`,
     // index.html and every SPA-fallback deep link revalidate; fingerprinted assets override below.
     '  Cache-Control: no-cache',
     '',

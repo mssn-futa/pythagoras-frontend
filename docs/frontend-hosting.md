@@ -1,14 +1,13 @@
 # Frontend hosting on Cloudflare Workers Static Assets — RELEASE-04
 
 Governing designs: D5 "Cloudflare hosting topology", "Deployment and origins" and "Logging throttling and
-security"; D0 "Frontend client and route convention". The React/Vite app is hosted as static assets with no Worker
-script. PLAT-08 later adds GA4 consent/CSP (use `PUBLIC_EXTRA_CONNECT_ORIGINS` or extend `scripts/hosting/headers.mjs`).
+security"; D0 "Frontend client and route convention". The React/Vite app is hosted as static assets with only a tiny `/assets/*` guard Worker. PLAT-08 later adds GA4 consent/CSP (use `PUBLIC_EXTRA_CONNECT_ORIGINS` or extend `scripts/hosting/headers.mjs`).
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `wrangler.jsonc` | Static assets from `dist/`, `not_found_handling: "single-page-application"` (unknown paths return `/index.html`, 200). No `main`. |
+| `wrangler.jsonc`, `worker/assets-guard.js` | Static assets from `dist/`, `not_found_handling: "single-page-application"` (unknown paths return `/index.html`, 200). A tiny Worker runs only for `/assets/*` and turns a missing asset into 404. |
 | `scripts/hosting/headers.mjs`, `render-headers.mjs` | Validate origin env vars and write `dist/_headers` at build time. Nothing is hard-coded except Google Fonts and the Aladhan API (both switchable). |
 | `scripts/hosting/scan-bundle.mjs` | Fails when `dist/` (text files incl. maps) contains secret patterns, or the build env has secret-looking `VITE_*` names. |
 | `tests/behavior/hosting.test.js` | Unit tests for rendering, validation and the scanner. |
@@ -27,7 +26,7 @@ and SPA fallback. It is not part of the browser bundle.
 | `PUBLIC_API_ORIGIN` | no | Same origin for the CSP; defaults to `VITE_API_URL`; build fails if both are set and differ. |
 | `PUBLIC_MEDIA_ORIGIN` | yes | R2 public custom domain (`img-src`, `media-src`). `*.r2.dev` is rejected (D5). |
 | `R2_S3_PRESIGN_ORIGIN` | yes | S3 endpoint host(s) of the presigned PUT (`connect-src`; also `img-src`/`media-src` because admin previews can be short-lived presigned GETs). Comma-separate bucket-style hosts. |
-| `PUBLIC_PRAYER_API_ORIGIN` / `PUBLIC_PRAYER_API_ENABLED` | no | `https://api.aladhan.com` today (`src/services/islamicApi.js`). |
+| `PUBLIC_PRAYER_API_ENABLED` / `PUBLIC_PRAYER_API_ORIGIN` | no | Default **off**: D0 hides prayer/Hijri widgets in Phase 1, so `api.aladhan.com` is not in `connect-src` and `geolocation=()`. `=true` adds the origin (default `https://api.aladhan.com`, `src/services/islamicApi.js`) and `geolocation=(self)`. |
 | `PUBLIC_GOOGLE_FONTS_ENABLED` | no | Allows `fonts.googleapis.com` (`style-src`) and `fonts.gstatic.com` (`font-src`) for `src/index.css`'s Poppins `@import`. |
 | `PUBLIC_EXTRA_CONNECT_ORIGINS` | no | Exact extra `connect-src` origins (PLAT-08 GA4). No wildcards. |
 | `CSP_REPORT_ONLY` | no | Emit `Content-Security-Policy-Report-Only` for a staged rollout. |
@@ -52,16 +51,15 @@ npm run test:hosting       # production build behind wrangler dev: existing brow
 
 | Header | Value / reason |
 |---|---|
-| `Content-Security-Policy` | `default-src 'self'`; `script-src 'self'` (the build has no inline script); `connect-src` self + API + S3 presign host + Aladhan; `img-src` self + `data:` (Vite inlines small assets) + media + S3 host; `media-src` self + media + S3 host; `frame-src https://www.youtube-nocookie.com` (privacy-enhanced embed only; `youtube.com` is a link, not a frame); `object-src 'none'`; `base-uri 'self'`; `form-action 'self'`; `frame-ancestors 'none'`; `worker-src 'none'`; `upgrade-insecure-requests`. |
+| `Content-Security-Policy` | `default-src 'self'`; `script-src 'self'` (the build has no inline script); `connect-src` self + API + S3 presign host (+ Aladhan only when enabled); `img-src` self + `data:` (Vite inlines small assets) + media + S3 host; `media-src` self + media + S3 host; `frame-src https://www.youtube-nocookie.com` (privacy-enhanced embed only; `youtube.com` is a link, not a frame); `object-src 'none'`; `base-uri 'self'`; `form-action 'self'`; `frame-ancestors 'none'`; `worker-src 'none'`; `upgrade-insecure-requests`. |
 | `style-src` | `'self' 'unsafe-inline'` plus Google Fonts. **Narrow deviation from a strict policy:** measured with `tests/hosting/csp.spec.js` — (a) the Tiptap/ProseMirror editor injects a `<style>` element at runtime, and (b) sandboxed email previews are `srcdoc` iframes, which inherit the parent policy, so server HTML with inline `style` attributes and the preview's own `<style>` are blocked without it. It is scoped to styles; scripts remain `'self'`. The preview additionally carries its own meta CSP (`default-src 'none'`, no scripts/images) and `sandbox=""`, so the effective preview policy is the intersection. Removing it needs a source change by the editor owner (editor `injectCSS: false`/nonce plus attribute-free preview HTML). |
 | `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` (no `preload`; opt in deliberately after staging). |
 | `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` | `nosniff`, `DENY` (legacy mirror of `frame-ancestors`), `strict-origin-when-cross-origin`. |
-| `Permissions-Policy` | Everything denied except `geolocation=(self)` (prayer times use the Geolocation API) and `autoplay` for the YouTube frame; `fullscreen`/`encrypted-media`/`picture-in-picture` stay at their defaults so the iframe `allow` attribute keeps working. |
+| `Permissions-Policy` | Everything denied (`geolocation=()` unless the prayer API is enabled) except `autoplay` for the YouTube frame; `fullscreen`/`encrypted-media`/`picture-in-picture` stay at their defaults so the iframe `allow` attribute keeps working. |
 | `Cache-Control` | `no-cache` for `/*` (index.html and every SPA-fallback deep link); `public, max-age=31536000, immutable` for `/assets/*` (fingerprinted by Vite). `! Cache-Control` detaches the broader rule so values are not merged. |
 
-Third-party hosts the source uses today, all listed above: Google Fonts (`src/index.css`), `api.aladhan.com`
-(`src/services/islamicApi.js`), `www.youtube-nocookie.com` (`VideoEmbed`). Self-hosting the font and proxying prayer
-times would let both allowances be removed; that is a feature-source change outside RELEASE-04.
+Third-party hosts allowed: Google Fonts (`src/index.css`) and `www.youtube-nocookie.com` (`VideoEmbed`); `api.aladhan.com`
+only if prayer times return. Self-hosting the font would remove that allowance (a feature-source change outside RELEASE-04).
 
 The app has no PWA/service worker and no GA4 yet. PLAT-08 must add the GA4 script/connect origins and keep
 `script-src` free of `unsafe-inline`.
@@ -71,11 +69,13 @@ The app has no PWA/service worker and no GA4 yet. PLAT-08 must add the GA4 scrip
 `not_found_handling: "single-page-application"` returns `/index.html` (200) for any path that is not an asset, so
 `/admin/quizzes/1` and `/dawah/content/3` reload into the SPA, where `RequireAdmin`/guards decide access
 (direct private-route reloads stay guarded; the server never serves private data from static assets).
-Known limit: a missing hashed file under `/assets/` (client with an old `index.html` after a deploy) also receives
-`index.html`, matched by the `/assets/*` immutable rule in local mode. Mitigations: deploy with
-`--old-asset-ttl <seconds>` so the previous release's assets stay available, and verify the staging behavior below.
-`public/` does not exist, so `/vite.svg` (the favicon in `index.html`) also falls back to HTML; supply the file or change
-the link in a separate change.
+A missing fingerprinted file must not become `index.html` under the immutable cache rule. Static Assets' built-in SPA
+fallback does not distinguish navigations in local mode (verified: `Sec-Fetch-Mode: navigate`, `no-cors`, `cors` and no header all
+returned index.html for `/assets/missing.js`), so `wrangler.jsonc` sets `run_worker_first: ["/assets/*"]` and
+`worker/assets-guard.js` (about 10 lines) returns `404`, `Cache-Control: no-store`, for any HTML answer under `/assets/`.
+Only `/assets/*` runs the Worker; deep links and the rest are served by Static Assets directly. Also deploy with
+`--old-asset-ttl <seconds>` so a previous release's chunks survive for tabs still open.
+The favicon is `public/favicon.png` (copy of `src/assets/logo.png`); the dead `/vite.svg` link was replaced.
 
 ## Origin and CORS facts (for RELEASE-06/07, handover)
 
@@ -109,5 +109,5 @@ npx wrangler deployments list && npx wrangler rollback  # rollback to previous v
 Staging proof checklist: custom domains and DNS/TLS for app/API/media; real API and R2 origins; deep links
 `/admin/quizzes/1`, `/dawah/content/3`, `/sign-in?next=...` return the SPA (200) and the guard redirects when
 signed out; `curl -I` shows the rendered `_headers` on `/`, a deep link, `/assets/<hash>.js` (immutable) and a
-missing `/assets/missing.js` (verify it is not cached immutably); API CORS/bearer round trip; direct R2 PUT with
+missing `/assets/missing.js` (must be 404, `no-store`); API CORS/bearer round trip; direct R2 PUT with
 bucket CORS and no bearer; media Range/206 on the media domain; browser console shows no CSP violations.

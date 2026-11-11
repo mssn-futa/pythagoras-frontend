@@ -56,8 +56,17 @@ describe('hosting headers (RELEASE-04)', () => {
     expect(text).not.toContain('upgrade-insecure-requests')
   })
 
+  it('omits the prayer API and geolocation by default (D0 hides prayer/Hijri in Phase 1)', () => {
+    const text = renderHeaders(readHostingConfig(env))
+    expect(text).not.toContain('aladhan')
+    expect(text).toContain('geolocation=()')
+    const enabled = renderHeaders(readHostingConfig({ ...env, PUBLIC_PRAYER_API_ENABLED: 'true' }))
+    expect(enabled).toContain('connect-src \'self\' https://api.example.org https://acct.r2.cloudflarestorage.com https://api.aladhan.com')
+    expect(enabled).toContain('geolocation=(self)')
+  })
+
   it('supports comma-separated S3 hosts, optional third parties and report-only', () => {
-    const config = readHostingConfig({ ...env, R2_S3_PRESIGN_ORIGIN: 'https://a.r2.cloudflarestorage.com, https://b.a.r2.cloudflarestorage.com', PUBLIC_GOOGLE_FONTS_ENABLED: 'false', PUBLIC_PRAYER_API_ENABLED: 'false', CSP_REPORT_ONLY: 'true' })
+    const config = readHostingConfig({ ...env, R2_S3_PRESIGN_ORIGIN: 'https://a.r2.cloudflarestorage.com, https://b.a.r2.cloudflarestorage.com', PUBLIC_GOOGLE_FONTS_ENABLED: 'false', CSP_REPORT_ONLY: 'true' })
     const text = renderHeaders(config)
     expect(text).toContain('Content-Security-Policy-Report-Only:')
     expect(text).toContain('https://b.a.r2.cloudflarestorage.com')
