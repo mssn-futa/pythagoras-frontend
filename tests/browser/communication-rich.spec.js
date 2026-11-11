@@ -80,16 +80,17 @@ test('admin writes rich text, pastes hostile HTML, validates a link, reloads can
   await page.getByRole('button', { name: 'Apply link' }).click()
   await expect(editor.getByRole('link', { name: 'Read the recording' })).toHaveAttribute('href', 'https://example.test/dawah/content/8')
 
-  // Hostile paste is reduced to the allowlist. Tiptap returns focus to the editor
-  // asynchronously after the link panel closes, and ProseMirror adopts the moved
-  // DOM caret on a later selectionchange: wait for both before pasting, so the
-  // paste never lands on the still-selected link text.
-  await expect(editor).toBeFocused()
-  await page.keyboard.press('Control+End')
+  // Wait until the link panel has closed (it refocuses the editor) and the mark exists, then collapse the
+  // selection to the end of the document explicitly so the paste can never replace the selected link text.
+  await expect(page.getByLabel(/Link address/)).toHaveCount(0)
+  await expect(editor.locator('a')).toHaveCount(1)
+  await page.evaluate(() => document.querySelector('.ProseMirror').editor.chain().focus('end').run())
   await expect.poll(() => page.evaluate(() => {
     const { selection, doc } = document.querySelector('.ProseMirror').editor.state
-    return selection.empty && selection.to === doc.content.size - 1
+    return selection.empty && selection.from === doc.content.size - 1
   })).toBe(true)
+
+  // Hostile paste is reduced to the allowlist.
   await page.evaluate(() => {
     const dt = new DataTransfer()
     dt.setData('text/html', '<p onclick="window.__pwned=1">Pasted <u style="color:red">text</u></p><script>window.__pwned=2</script><img src="https://evil.test/p.png"><a href="javascript:alert(1)">bad link</a>')
@@ -98,7 +99,8 @@ test('admin writes rich text, pastes hostile HTML, validates a link, reloads can
   })
   await expect(editor).toContainText('Pasted text')
   expect(await editor.locator('script, img, u, [style], [onclick]').count()).toBe(0)
-  expect(await editor.locator('a').count()).toBe(1)
+  await expect(editor.locator('a')).toHaveCount(1)
+  await expect(editor.getByRole('link', { name: 'Read the recording' })).toBeVisible()
   expect(await page.evaluate(() => window.__pwned)).toBeUndefined()
 
   await page.getByRole('button', { name: 'Save draft' }).click()
