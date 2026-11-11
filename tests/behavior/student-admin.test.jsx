@@ -74,11 +74,12 @@ describe('student list', () => {
     await user.selectOptions(screen.getByLabelText('Status'), 'true')
     await user.type(screen.getByLabelText('Department (exact match)'), 'Law')
     await waitFor(() => expect(location()).toBe('/admin/students?department=Law&level=300&is_active=true'))
-    expect(queries.at(-1)).toMatchObject({ department: 'Law', level: '300', is_active: 'true', page_size: '20' })
+    // The list request follows the URL update; wait for it rather than racing it.
+    await waitFor(() => expect(queries.at(-1)).toMatchObject({ department: 'Law', level: '300', is_active: 'true', page_size: '20' }))
 
     await user.type(screen.getByLabelText('Search students'), 'first7')
     await waitFor(() => expect(location()).toContain('search=first7'))
-    expect(queries.at(-1).search).toBe('first7')
+    await waitFor(() => expect(queries.at(-1).search).toBe('first7'))
   })
 
   test('filters are restored from the URL on load', async () => {
