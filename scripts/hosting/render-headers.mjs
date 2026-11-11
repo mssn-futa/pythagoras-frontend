@@ -15,7 +15,7 @@ try {
   const body = renderHeaders(config)
   mkdirSync(dist, { recursive: true })
   writeFileSync(join(dist, '_headers'), body)
-  console.log(`render-headers: wrote ${join(dist, '_headers')} (api ${config.apiOrigin}, media ${config.mediaOrigin}, s3 ${config.presignOrigins.join(' ')})`)
+  console.log(`render-headers: wrote ${join(dist, '_headers')} (api ${config.apiOrigin}, media ${config.mediaOrigin}, s3 ${config.presignOrigins.join(' ')}, GA4 ${config.analytics ? 'on' : 'off'})`)
 } catch (error) {
   if (!(error instanceof ConfigError)) throw error
   console.error(`render-headers: ${error.message}`)

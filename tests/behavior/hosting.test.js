@@ -3,7 +3,7 @@ import { cpSync, readFileSync, symlinkSync, mkdtempSync, mkdirSync, writeFileSyn
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { ConfigError, buildCsp, readHostingConfig, renderHeaders } from '../../scripts/hosting/headers.mjs'
+import { ConfigError, GA_COLLECT_ORIGINS, GA_SCRIPT_ORIGIN, buildCsp, readHostingConfig, renderHeaders } from '../../scripts/hosting/headers.mjs'
 import { scanDist, scanEnvFiles } from '../../scripts/hosting/scan-bundle.mjs'
 
 const env = {
@@ -115,6 +115,50 @@ describe('hosting headers (RELEASE-04)', () => {
     expect(text).toContain('https://b.a.r2.cloudflarestorage.com')
     expect(text).not.toContain('fonts.googleapis.com')
     expect(text).not.toContain('aladhan')
+  })
+})
+
+describe('GA4 CSP allowances (PLAT-08)', () => {
+  const directive = (csp, name) => csp.split('; ').find((part) => part.startsWith(`${name} `)) ?? ''
+  const gaHosts = ['googletagmanager', 'google-analytics', 'analytics.google']
+
+  it('adds no Google Analytics origin when no measurement ID is configured', () => {
+    const config = readHostingConfig(env)
+    expect(config.analytics).toBeNull()
+    const csp = buildCsp(config)
+    for (const host of gaHosts) expect(csp).not.toContain(host)
+  })
+
+  it('adds exactly the gtag script origin and the documented collection hosts when a measurement ID is set', () => {
+    const config = readHostingConfig({ ...env, VITE_GA_MEASUREMENT_ID: 'g-abc123xyz' })
+    expect(config.analytics).toEqual({ measurementId: 'G-ABC123XYZ' })
+    const csp = buildCsp(config)
+    expect(directive(csp, 'script-src')).toBe(`script-src 'self' ${GA_SCRIPT_ORIGIN}`)
+    expect(directive(csp, 'connect-src')).toBe(`connect-src 'self' https://api.example.org https://acct.r2.cloudflarestorage.com ${GA_SCRIPT_ORIGIN} ${GA_COLLECT_ORIGINS.join(' ')}`)
+    expect(directive(csp, 'img-src')).toBe(`img-src 'self' data: https://media.example.org https://acct.r2.cloudflarestorage.com ${GA_SCRIPT_ORIGIN} ${GA_COLLECT_ORIGINS.join(' ')}`)
+    expect(GA_COLLECT_ORIGINS).toEqual(['https://www.google-analytics.com', 'https://region1.google-analytics.com', 'https://region1.analytics.google.com'])
+    // Nothing else changes: no inline/eval script, no wildcard, no ads/signals hosts, frames untouched.
+    expect(directive(csp, 'script-src')).not.toMatch(/unsafe|\*/)
+    expect(csp).not.toContain('*')
+    expect(csp).not.toMatch(/doubleclick|googlesyndication|www\.google\.com/)
+    expect(directive(csp, 'frame-src')).toBe('frame-src https://www.youtube-nocookie.com')
+    for (const name of ['media-src', 'font-src', 'style-src', 'default-src']) expect(directive(csp, name)).not.toMatch(/google-analytics|googletagmanager/)
+    expect(Math.max(...renderHeaders(config).split('\n').map((line) => line.length))).toBeLessThan(2000)
+  })
+
+  it('accepts PUBLIC_GA_ENABLED as a confirmation and keeps extra connect origins after the GA hosts', () => {
+    const csp = buildCsp(readHostingConfig({ ...env, VITE_GA_MEASUREMENT_ID: 'G-ABC123XYZ', PUBLIC_GA_ENABLED: 'true', PUBLIC_EXTRA_CONNECT_ORIGINS: 'https://extra.example.org' }))
+    expect(directive(csp, 'connect-src').endsWith('https://region1.analytics.google.com https://extra.example.org')).toBe(true)
+  })
+
+  it.each([
+    [{ VITE_GA_MEASUREMENT_ID: 'UA-12345-1' }, /GA4 measurement ID/],
+    [{ VITE_GA_MEASUREMENT_ID: 'G-ABC;script-src *' }, /GA4 measurement ID/],
+    [{ PUBLIC_GA_ENABLED: 'true' }, /VITE_GA_MEASUREMENT_ID is empty/],
+    [{ VITE_GA_MEASUREMENT_ID: 'G-ABC123XYZ', PUBLIC_GA_ENABLED: 'false' }, /CSP blocks/],
+  ])('rejects inconsistent analytics configuration %#', (override, message) => {
+    expect(() => readHostingConfig({ ...env, ...override })).toThrow(ConfigError)
+    expect(() => readHostingConfig({ ...env, ...override })).toThrow(message)
   })
 })
 

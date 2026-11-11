@@ -2,14 +2,27 @@
  * Renders the Cloudflare Workers Static Assets `_headers` file from build-time
  * origin configuration (RELEASE-04, D5 "Deployment and origins"). Nothing here
  * is a secret: every value is a public origin that the browser already sees.
- * No hostname is hard-coded except the two third-party hosts the app uses today
- * (Google Fonts, and the Aladhan prayer-times API only when explicitly enabled), which have env switches.
+ * No hostname is hard-coded except the third-party hosts the app uses (Google Fonts, the Aladhan
+ * prayer-times API only when explicitly enabled, and GA4 only when a measurement ID is configured),
+ * which have env switches.
  */
 
 export const YOUTUBE_EMBED_ORIGIN = 'https://www.youtube-nocookie.com'
 const FONT_STYLE_ORIGIN = 'https://fonts.googleapis.com'
 const FONT_FILE_ORIGIN = 'https://fonts.gstatic.com'
 const DEFAULT_PRAYER_API_ORIGIN = 'https://api.aladhan.com'
+
+/*
+ * GA4 via gtag.js (PLAT-08), only when VITE_GA_MEASUREMENT_ID is set. Exact hosts, no wildcards (D5).
+ * Google's CSP guide (developers.google.com/tag-platform/security/guides/csp, "without Ads features") lists
+ * www.googletagmanager.com for scripts and *.google-analytics.com / *.analytics.google.com for hits; the
+ * wildcards exist for regional endpoints, so the documented regional hosts are listed one by one. Google
+ * signals and ads personalization are disabled in code and in the property, so no doubleclick/google.com hosts.
+ * The script loads only after consent (src/features/analytics); the CSP allowance alone sends nothing.
+ */
+export const GA_SCRIPT_ORIGIN = 'https://www.googletagmanager.com'
+export const GA_COLLECT_ORIGINS = Object.freeze(['https://www.google-analytics.com', 'https://region1.google-analytics.com', 'https://region1.analytics.google.com'])
+const GA_MEASUREMENT_ID = /^G-[A-Z0-9]{4,20}$/
 
 export class ConfigError extends Error {}
 
@@ -49,6 +62,18 @@ function parseOriginList(name, value, options) {
 
 const flag = (value, fallback) => (value === undefined || value === '' ? fallback : ['1', 'true', 'yes'].includes(String(value).toLowerCase()))
 
+/** GA4 is on exactly when the bundle has a measurement ID; PUBLIC_GA_ENABLED may only confirm that, never contradict it. */
+function readAnalytics(env) {
+  const measurementId = String(env.VITE_GA_MEASUREMENT_ID ?? '').trim().toUpperCase()
+  if (measurementId && !GA_MEASUREMENT_ID.test(measurementId)) {
+    throw new ConfigError(`VITE_GA_MEASUREMENT_ID must be a GA4 measurement ID like G-XXXXXXXXXX: ${JSON.stringify(env.VITE_GA_MEASUREMENT_ID)}`)
+  }
+  const enabled = flag(env.PUBLIC_GA_ENABLED, Boolean(measurementId))
+  if (enabled && !measurementId) throw new ConfigError('PUBLIC_GA_ENABLED is set but VITE_GA_MEASUREMENT_ID is empty: the bundle would have analytics off')
+  if (!enabled && measurementId) throw new ConfigError('VITE_GA_MEASUREMENT_ID is set but PUBLIC_GA_ENABLED is false: the bundle would load a tag the CSP blocks')
+  return enabled ? { measurementId } : null
+}
+
 /** Reads the public hosting configuration from an env-like object. */
 export function readHostingConfig(env) {
   const allowInsecure = flag(env.HOSTING_ALLOW_INSECURE, false)
@@ -76,6 +101,7 @@ export function readHostingConfig(env) {
       : null,
     googleFonts: flag(env.PUBLIC_GOOGLE_FONTS_ENABLED, true),
     extraConnectOrigins: parseOriginList('PUBLIC_EXTRA_CONNECT_ORIGINS', env.PUBLIC_EXTRA_CONNECT_ORIGINS, options),
+    analytics: readAnalytics(env),
     reportOnly: flag(env.CSP_REPORT_ONLY, false),
     allowInsecure,
   }
@@ -84,16 +110,18 @@ export function readHostingConfig(env) {
 const unique = (values) => [...new Set(values)]
 
 export function buildCsp(config) {
-  const connect = unique(["'self'", config.apiOrigin, ...config.presignOrigins, ...(config.prayerApiOrigin ? [config.prayerApiOrigin] : []), ...config.extraConnectOrigins])
+  const ga = config.analytics ? [GA_SCRIPT_ORIGIN, ...GA_COLLECT_ORIGINS] : []
+  const connect = unique(["'self'", config.apiOrigin, ...config.presignOrigins, ...(config.prayerApiOrigin ? [config.prayerApiOrigin] : []), ...ga, ...config.extraConnectOrigins])
   const directives = {
     'default-src': ["'self'"],
-    'script-src': ["'self'"],
+    // gtag.js is an external script (no inline snippet), so 'unsafe-inline' stays out of script-src.
+    'script-src': unique(["'self'", ...(config.analytics ? [GA_SCRIPT_ORIGIN] : [])]),
     // 'unsafe-inline' is for styles only (never scripts). Needed by (a) the Tiptap/ProseMirror editor, which injects
     // a <style> element at runtime, and (b) srcdoc email previews, which inherit this policy and render server HTML
     // with inline style attributes. Measured with tests/hosting/csp.spec.js; see docs/frontend-hosting.md.
     'style-src': unique(["'self'", "'unsafe-inline'", ...(config.googleFonts ? [FONT_STYLE_ORIGIN] : [])]),
     'font-src': unique(["'self'", ...(config.googleFonts ? [FONT_FILE_ORIGIN] : [])]),
-    'img-src': unique(["'self'", 'data:', config.mediaOrigin, ...config.presignOrigins]),
+    'img-src': unique(["'self'", 'data:', config.mediaOrigin, ...config.presignOrigins, ...ga]),
     'media-src': unique(["'self'", config.mediaOrigin, ...config.presignOrigins]),
     'connect-src': connect,
     'frame-src': [YOUTUBE_EMBED_ORIGIN],
