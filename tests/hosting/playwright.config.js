@@ -5,7 +5,7 @@ import { defineConfig, devices } from '@playwright/test'
 // browser specs (so every feature page runs under the policy) plus tests/hosting/*.spec.js.
 // Synthetic origins match what those specs already intercept with page.route.
 const PORT = Number(process.env.HOSTING_PORT ?? 4181)
-const buildEnv = {
+export const buildEnv = {
   VITE_API_URL: 'https://api.pythagoras.test',
   PUBLIC_MEDIA_ORIGIN: 'https://media.pythagoras.test',
   R2_S3_PRESIGN_ORIGIN: 'https://r2.example.test',
@@ -16,6 +16,10 @@ export default defineConfig({
   testMatch: ['browser/**/*.spec.js', 'hosting/**/*.spec.js'],
   testIgnore: [
     'browser/harness.spec.js', // targets the Vite-only RELEASE-02 fixture page
+    // PLAT-08: the Vite-only /ga-harness page, and the GA4 build check, which needs its own build with a measurement ID
+    // (tests/hosting/analytics.playwright.config.js; without consent the banner would sit over the other specs' pages).
+    'browser/analytics.spec.js',
+    'hosting/analytics-csp.spec.js',
     // Pre-existing timing race (focus/selection after "Apply link" before the synthetic paste): it also fails
     // intermittently on `vite preview` with no CSP. Editor + sandboxed preview are covered by hosting/csp.spec.js.
     'browser/communication-rich.spec.js',

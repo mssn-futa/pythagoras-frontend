@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, useLayoutEffect, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAnalytics, useAnalyticsState } from "./AnalyticsContext.js";
 import { primaryButton, secondaryButton } from "./styles.js";
@@ -14,8 +14,28 @@ export default function ConsentBanner() {
   const { pathname } = useLocation();
   const titleId = useId();
   const textId = useId();
+  const panel = useRef(null);
   // The settings page has the same controls inline.
-  if (!enabled || optOutSignal || choice !== "unset" || pathname === "/privacy") return null;
+  const visible = enabled && !optOutSignal && choice === "unset" && pathname !== "/privacy";
+
+  // While shown, reserve its height at the end of the page so it never permanently hides the last controls.
+  useLayoutEffect(() => {
+    if (!visible || !panel.current) return undefined;
+    const body = document.body;
+    const previous = body.style.paddingBottom;
+    const reserve = () => {
+      body.style.paddingBottom = `${panel.current?.offsetHeight ?? 0}px`;
+    };
+    reserve();
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(reserve) : null;
+    observer?.observe(panel.current);
+    return () => {
+      observer?.disconnect();
+      body.style.paddingBottom = previous;
+    };
+  }, [visible]);
+
+  if (!visible) return null;
 
   return (
     <section
@@ -23,6 +43,7 @@ export default function ConsentBanner() {
       aria-labelledby={titleId}
       aria-describedby={textId}
       data-testid="analytics-consent"
+      ref={panel}
       className="fixed inset-x-0 bottom-0 z-[55] p-3 sm:p-4 pointer-events-none"
     >
       <div className="pointer-events-auto mx-auto max-w-3xl rounded-2xl bg-white dark:bg-black text-[#1F2937] dark:text-white shadow-lg border border-gray-200 dark:border-gray-700 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-5">
