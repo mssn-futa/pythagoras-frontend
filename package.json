@@ -12,7 +12,13 @@
     "test:watch": "vitest --watch --config vitest.config.js",
     "test:browser": "playwright test",
     "test:browser:serve": "vite --config tests/browser/vite.config.js",
-    "test:all": "npm test && npm run test:browser"
+    "test:all": "npm test && npm run test:browser",
+    "build:cloudflare": "vite build && node scripts/hosting/render-headers.mjs && node scripts/hosting/scan-bundle.mjs",
+    "hosting:headers": "node scripts/hosting/render-headers.mjs",
+    "hosting:scan": "node scripts/hosting/scan-bundle.mjs",
+    "hosting:dev": "wrangler dev --port 8788 --ip 127.0.0.1",
+    "hosting:dry-run": "wrangler deploy --dry-run",
+    "test:hosting": "playwright test --config tests/hosting/playwright.config.js"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^7.1.0",
@@ -62,6 +68,7 @@
     "msw": "2.15.0",
     "tailwindcss": "^4.1.17",
     "vite": "^7.2.4",
-    "vitest": "4.1.12"
+    "vitest": "4.1.12",
+    "wrangler": "4.160.0"
   }
 }
