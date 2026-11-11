@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import FeaturedImagePanel from "../components/FeaturedImagePanel.jsx";
 import EventForm from "../components/EventForm.jsx";
@@ -24,6 +24,11 @@ function EventDetail({ eventId }) {
   const event = eventState.data;
   // Called before any early return so hook order is stable.
   const imageUpload = useImageUpload({ eventId, event, onEventChange: eventState.reload });
+  // A stale "Draft event created." banner must not outlive the upload that follows it.
+  const imageBusy = imageUpload.busy;
+  useEffect(() => {
+    if (imageBusy) setNotice(null);
+  }, [imageBusy]);
   if (eventState.loading && !event) return <Loading label="Loading event…" />;
   if (eventState.error) return <ErrorState error={eventState.error} onRetry={eventState.reload} title="Could not load this event" />;
 

@@ -343,9 +343,19 @@ describe('DAWAH-01 conflict codes', () => {
     expect(await screen.findByText(/referenced by a quiz.*#3/)).toBeInTheDocument()
   })
 
-  test('EVENT_NOT_PUBLISHED when publishing a resource of an unpublished event', async () => {
+  test('publish is disabled with an explanation while the parent event is not published', async () => {
     renderAdminApp('/admin/events/3/resources/8', [
-      http.get(url('/dawah/events/3/'), () => ok(rawEvent({ status: 'unpublished' }))),
+      http.get(url('/dawah/events/3/'), () => ok(rawEvent({ status: 'draft' }))),
+      http.get(url('/dawah/events/3/resources/8/'), () => ok(rawResource({ storage_status: 'ready' }))),
+    ])
+    expect(await screen.findByText(/Publish the event before publishing this resource/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Publish resource' })).toBeDisabled()
+    expect(screen.getByRole('link', { name: 'Go to the event' })).toBeInTheDocument()
+  })
+
+  test('EVENT_NOT_PUBLISHED when the event was unpublished after the page loaded', async () => {
+    renderAdminApp('/admin/events/3/resources/8', [
+      http.get(url('/dawah/events/3/'), () => ok(rawEvent({ status: 'published' }))),
       http.get(url('/dawah/events/3/resources/8/'), () => ok(rawResource({ storage_status: 'ready' }))),
       http.post(url('/dawah/events/3/resources/8/publish/'), () => fail(409, 'EVENT_NOT_PUBLISHED', 'Parent not published.')),
     ])

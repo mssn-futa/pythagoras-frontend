@@ -46,10 +46,10 @@ function UpcomingEvents() {
       <h2 id="upcoming-heading" className="mb-3 text-xl font-bold text-[#1F2937] dark:text-white">
         Upcoming events
       </h2>
-      <ul className="space-y-2">
+      <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {data.results.map((event) => (
-          <li key={event.id} className="space-y-2">
-            <EventImage event={event} className="max-h-40 sm:max-w-sm" />
+          <li key={event.id} className="space-y-2 rounded-lg border border-gray-200 p-3 dark:border-gray-600">
+            <EventImage event={event} />
             <Link to={`/dawah/events/${event.id}`} className="font-medium text-[#2A742F] hover:underline dark:text-green-400">
               {event.title}
             </Link>
