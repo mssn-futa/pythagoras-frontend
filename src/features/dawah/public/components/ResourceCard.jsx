@@ -9,7 +9,9 @@ export default function ResourceCard({ resource }) {
   const meta = [categoryLabel(event?.category), event?.speakers, formatDate(event?.startTime), formatDurationLabel(resource.duration)].filter(Boolean)
   return (
     <li className="rounded-xl bg-white p-4 dark:bg-gray-800">
-      <EventImage event={event} className="mb-3 max-h-48" />
+      <div className="flex gap-4">
+        <EventImage event={event} className="!w-24 shrink-0 self-start sm:!w-32" />
+        <div className="min-w-0 flex-1">
       <h3 className="text-lg font-semibold text-[#1F2937] dark:text-white">
         <Link to={`/dawah/content/${resource.id}`} className="hover:underline">
           {resource.title}
@@ -18,6 +20,8 @@ export default function ResourceCard({ resource }) {
       {event?.title && <p className="text-sm text-[#6B7280] dark:text-gray-300">{event.title}</p>}
       {meta.length > 0 && <p className="mt-1 text-sm text-[#6B7280] dark:text-gray-400">{meta.join(' · ')}</p>}
       {event?.summary && <p className="mt-2 text-sm text-[#374151] dark:text-gray-200">{event.summary}</p>}
+        </div>
+      </div>
       <div className="mt-3 flex flex-wrap items-center gap-4 text-sm font-medium text-[#2A742F] dark:text-green-400">
         <ResourceRenderer resource={resource} variant="compact" detailPath={`/dawah/content/${resource.id}`} />
         {resource.eventId != null && (
