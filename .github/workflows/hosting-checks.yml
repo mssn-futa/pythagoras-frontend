@@ -1,0 +1,47 @@
+name: Hosting checks
+
+# RELEASE-04: Workers Static Assets build artefacts only. No deploy, no secrets, no Cloudflare credentials.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hosting-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  headers-and-secret-scan:
+    name: render headers and scan bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Synthetic public origins: this job proves rendering/validation, not a deployment.
+      VITE_API_URL: https://api.pythagoras.test
+      PUBLIC_MEDIA_ORIGIN: https://media.pythagoras.test
+      R2_S3_PRESIGN_ORIGIN: https://r2.example.test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Hosting unit tests
+        run: npx vitest run --config vitest.config.js tests/behavior/hosting.test.js
+      - name: Build, render _headers and scan bundle
+        run: npm run build:cloudflare
+      - name: Check rendered headers
+        run: |
+          grep -q "^  Content-Security-Policy: .*script-src 'self'" dist/_headers
+          grep -q "frame-ancestors 'none'" dist/_headers
+          grep -q "connect-src 'self' https://api.pythagoras.test https://r2.example.test" dist/_headers
+          grep -q "Cache-Control: public, max-age=31536000, immutable" dist/_headers
+          ! grep -q "unsafe-eval" dist/_headers
+      - name: Validate Wrangler config
+        run: npx wrangler deploy --dry-run
