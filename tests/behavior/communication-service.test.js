@@ -74,7 +74,7 @@ describe('payload and response mapping', () => {
     server.use(...backend.handlers)
     const preview = await previewBroadcast(7, 1)
     expect(backend.calls[0]).toMatchObject({ method: 'POST', path: '/dawah/broadcasts/7/preview/', body: { version: 1 } })
-    expect(preview).toEqual({ subject: 'Weekly Da’wah summary', body: 'Summary and recording link', renderedText: 'Summary and recording link', renderedHtml: '<p>Summary and recording link</p>', audienceCount: 42 })
+    expect(preview).toEqual({ subject: 'Weekly Da’wah summary', body: 'Summary and recording link', renderedText: 'Summary and recording link', renderedHtml: expect.stringMatching(/^<!DOCTYPE html>[\s\S]*<p>Summary and recording link<\/p><\/body><\/html>$/), audienceCount: 42 })
     expect(normalizePreview({ subject: 's', body: 'b', body_html: '<script>', rendered_html: '<b>' })).not.toHaveProperty('bodyHtml')
   })
 
