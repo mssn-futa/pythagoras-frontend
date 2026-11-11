@@ -124,8 +124,9 @@ export default function QuizResultsPage() {
       {!loading && !error && data && data.results.length > 0 && (
         <>
           <div className="relative overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
-            <table className="w-full min-w-[34rem] text-left text-sm">
-              <thead className="bg-gray-50 text-gray-600">
+            {/* Phones: each row stacks as a card (no hidden columns); sm and up: a normal table. */}
+            <table className="w-full text-left text-sm sm:min-w-[34rem]">
+              <thead className="hidden bg-gray-50 text-gray-600 sm:table-header-group">
                 <tr>
                   <th scope="col" className="px-4 py-3 font-medium">Student</th>
                   <th scope="col" className="px-4 py-3 font-medium">Score (points)</th>
@@ -133,16 +134,16 @@ export default function QuizResultsPage() {
                   <th scope="col" className="px-4 py-3 font-medium"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="block divide-y divide-gray-100 sm:table-row-group">
                 {data.results.map((result) => (
-                  <tr key={result.id}>
-                    <td className="px-4 py-3">
+                  <tr key={result.id} className="block px-4 py-3 sm:table-row sm:p-0">
+                    <td className="block sm:table-cell sm:px-4 sm:py-3">
                       <div className="font-medium text-gray-800">{result.studentName || `Student ${result.studentId ?? ""}`}</div>
                       <div className="text-xs text-gray-500">{result.studentEmail}</div>
                     </td>
-                    <td className="px-4 py-3 text-gray-800">{scoreText(result)}</td>
-                    <td className="px-4 py-3 text-gray-600">{formatLagos(result.submittedAt)}</td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="block pt-1 text-gray-800 sm:table-cell sm:px-4 sm:py-3"><span className="text-gray-500 sm:hidden">Score: </span>{scoreText(result)}</td>
+                    <td className="block text-gray-600 sm:table-cell sm:px-4 sm:py-3"><span className="text-gray-500 sm:hidden">Submitted: </span>{formatLagos(result.submittedAt)}</td>
+                    <td className="block pt-2 sm:table-cell sm:px-4 sm:py-3 sm:text-right">
                       <button type="button" className={secondaryButton} onClick={() => setSelected(result.id)} aria-label={`View result for ${result.studentName || result.studentEmail}`}>
                         View
                       </button>
