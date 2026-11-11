@@ -1,13 +1,15 @@
 import { createRoot } from "react-dom/client";
 import "./index.css";
-import App from "./App.jsx";
+import { AppRoot } from "./App.jsx";
 import { BrowserRouter } from "react-router-dom";
-import AuthProvider from "./features/auth/AuthProvider.jsx";
+import { createAnalytics } from "./features/analytics/analytics.js";
+import { readAnalyticsConfig } from "./features/analytics/config.js";
+
+// PLAT-08: analytics is off unless VITE_GA_MEASUREMENT_ID is set, and then loads only after consent.
+const analytics = createAnalytics(readAnalyticsConfig(import.meta.env));
 
 createRoot(document.getElementById("root")).render(
   <BrowserRouter>
-    <AuthProvider>
-      <App />
-    </AuthProvider>
+    <AppRoot analytics={analytics} />
   </BrowserRouter>
 );
