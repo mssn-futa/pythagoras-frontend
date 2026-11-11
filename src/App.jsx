@@ -1,4 +1,4 @@
-import { lazy } from "react";
+import { lazyPage } from "./routes/lazyPage.js";
 import { Route, Routes } from "react-router-dom";
 import Layout from "./components/layout/Layout";
 import { RedirectIfAuthenticated, RequireAdmin, RequireAuth } from "./features/auth/guards.jsx";
@@ -12,12 +12,12 @@ import { adminSlotRoutes, studentSlotRoutes } from "./routes/slots.js";
 // chunk (first screen for anonymous visitors); every other page loads on demand.
 // Guards and the student layout stay eager, so no page renders before its guard
 // decides; the admin layout (admin-only code) loads behind RequireAdmin.
-const AdminLayout = lazy(() => import("./components/layout/AdminLayout"));
-const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
-const StudentDashboard = lazy(() => import("./pages/admin/student/StudentDashboard"));
-const Profile = lazy(() => import("./pages/profile/Profile"));
-const Register = lazy(() => import("./pages/register/Register"));
-const Homepage = lazy(() => import("./pages/student/HomePage"));
+const AdminLayout = lazyPage(() => import("./components/layout/AdminLayout"));
+const AdminDashboard = lazyPage(() => import("./pages/admin/AdminDashboard"));
+const StudentDashboard = lazyPage(() => import("./pages/admin/student/StudentDashboard"));
+const Profile = lazyPage(() => import("./pages/profile/Profile"));
+const Register = lazyPage(() => import("./pages/register/Register"));
+const Homepage = lazyPage(() => import("./pages/student/HomePage"));
 
 /*
  * Root routing (owned by PLAT-04). Domain packages add pages ONLY through

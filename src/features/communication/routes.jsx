@@ -1,16 +1,17 @@
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
+import { lazyPage } from "../../routes/lazyPage.js";
 import { RouteLoading } from "../../routes/RouteBoundary.jsx";
 import CommunicationLayout from "./pages/CommunicationLayout.jsx";
 
 // Route-level code splitting (PLAT-07): each tab page is its own chunk, loaded on first visit.
 // The tab shell stays eager; tab pages suspend inside it so the tabs do not flash.
 const tab = (page) => <Suspense fallback={<RouteLoading />}>{page}</Suspense>;
-const AutomationRulePage = lazy(() => import("./pages/AutomationRulePage.jsx"));
-const AutomationsPage = lazy(() => import("./pages/AutomationsPage.jsx"));
-const BroadcastDetailPage = lazy(() => import("./pages/BroadcastDetailPage.jsx"));
-const ComposePage = lazy(() => import("./pages/ComposePage.jsx"));
-const DraftsPage = lazy(() => import("./pages/DraftsPage.jsx"));
-const HistoryPage = lazy(() => import("./pages/HistoryPage.jsx"));
+const AutomationRulePage = lazyPage(() => import("./pages/AutomationRulePage.jsx"));
+const AutomationsPage = lazyPage(() => import("./pages/AutomationsPage.jsx"));
+const BroadcastDetailPage = lazyPage(() => import("./pages/BroadcastDetailPage.jsx"));
+const ComposePage = lazyPage(() => import("./pages/ComposePage.jsx"));
+const DraftsPage = lazyPage(() => import("./pages/DraftsPage.jsx"));
+const HistoryPage = lazyPage(() => import("./pages/HistoryPage.jsx"));
 
 /**
  * Communication route slot (D4). Mounted by App at /admin/* inside AdminLayout,

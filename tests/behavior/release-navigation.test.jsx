@@ -1,4 +1,3 @@
-import { lazy } from 'react'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
@@ -6,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import RouteBoundary from '../../src/routes/RouteBoundary.jsx'
 import { isChunkLoadError } from '../../src/routes/chunkError.js'
+import { lazyPage } from '../../src/routes/lazyPage.js'
 import { server } from '../mocks/server.js'
 import { admin, fail, ok, recorder, resetSession, sessionHandlers, storeRefreshToken, student, url, useApiOrigin } from '../fixtures/auth.js'
 import { adminDashboardHandlers, emptyPage, page, studentDashboardHandlers } from '../fixtures/dashboard.js'
@@ -390,7 +390,7 @@ describe('route-level code splitting', () => {
 
   test('a pending chunk shows an accessible loading status', async () => {
     let resolve
-    const Page = lazy(() => new Promise((r) => { resolve = r }))
+    const Page = lazyPage(() => new Promise((r) => { resolve = r }))
     renderBoundary(Page)
     expect(await screen.findByRole('status')).toHaveTextContent('Loading page…')
     await act(async () => resolve({ default: () => <h1>Loaded page</h1> }))
@@ -399,7 +399,7 @@ describe('route-level code splitting', () => {
 
   test('a chunk that fails to download shows a reload prompt instead of a blank screen', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    const Page = lazy(() => Promise.reject(new TypeError('Failed to fetch dynamically imported module: /assets/Page-abc.js')))
+    const Page = lazyPage(() => Promise.reject(new TypeError('Failed to fetch dynamically imported module: /assets/Page-abc.js')))
     const onReload = renderBoundary(Page)
     const alert = await screen.findByRole('alert')
     expect(within(alert).getByRole('heading', { name: 'This page could not be loaded' })).toBeVisible()
@@ -423,12 +423,23 @@ describe('route-level code splitting', () => {
     expect(isChunkLoadError(new Error('boom'))).toBe(false)
   })
 
-  test('domain route modules are lazily loaded components', async () => {
+  test('domain route modules are lazily loaded pages', async () => {
     const { adminSlotRoutes, studentSlotRoutes } = await import('../../src/routes/slots.js')
-    const lazyType = Symbol.for('react.lazy')
+    const pages = (routes) => routes.flatMap((route) => [route.element, ...(route.children ? pages(route.children) : [])])
     for (const route of [...studentSlotRoutes, ...adminSlotRoutes]) {
-      if (route.children) continue // communication shell stays eager; its tabs suspend inside it
-      expect(route.element.type.$$typeof, route.path).toBe(lazyType)
+      if (route.children) continue // the communication tab shell stays eager; its tabs are lazy below
+      expect(typeof route.element.type.preload, route.path).toBe('function')
     }
+    const tabs = adminSlotRoutes.find((route) => route.path === 'communication').children
+    for (const tab of tabs) expect(typeof tab.element.props.children.type.preload).toBe('function')
+    expect(pages(studentSlotRoutes).length).toBeGreaterThan(0)
+  })
+
+  test('a page whose chunk is already loaded renders without a loading flash', async () => {
+    const Page = lazyPage(() => Promise.resolve({ default: () => <h1>Ready page</h1> }))
+    await Page.preload()
+    renderBoundary(Page)
+    expect(screen.getByRole('heading', { name: 'Ready page' })).toBeVisible()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 })

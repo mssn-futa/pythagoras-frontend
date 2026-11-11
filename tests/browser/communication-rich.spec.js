@@ -80,8 +80,16 @@ test('admin writes rich text, pastes hostile HTML, validates a link, reloads can
   await page.getByRole('button', { name: 'Apply link' }).click()
   await expect(editor.getByRole('link', { name: 'Read the recording' })).toHaveAttribute('href', 'https://example.test/dawah/content/8')
 
-  // Hostile paste is reduced to the allowlist.
+  // Hostile paste is reduced to the allowlist. Tiptap returns focus to the editor
+  // asynchronously after the link panel closes, and ProseMirror adopts the moved
+  // DOM caret on a later selectionchange: wait for both before pasting, so the
+  // paste never lands on the still-selected link text.
+  await expect(editor).toBeFocused()
   await page.keyboard.press('Control+End')
+  await expect.poll(() => page.evaluate(() => {
+    const { selection, doc } = document.querySelector('.ProseMirror').editor.state
+    return selection.empty && selection.to === doc.content.size - 1
+  })).toBe(true)
   await page.evaluate(() => {
     const dt = new DataTransfer()
     dt.setData('text/html', '<p onclick="window.__pwned=1">Pasted <u style="color:red">text</u></p><script>window.__pwned=2</script><img src="https://evil.test/p.png"><a href="javascript:alert(1)">bad link</a>')

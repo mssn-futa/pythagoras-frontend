@@ -1,14 +1,14 @@
-import { lazy } from "react";
+import { lazyPage } from "../../routes/lazyPage.js";
 
 // Route-level code splitting (PLAT-07): each page is its own chunk, loaded on first visit.
-const AttemptPage = lazy(() => import("./student/pages/AttemptPage.jsx"));
-const AvailableQuizzesPage = lazy(() => import("./student/pages/AvailableQuizzesPage.jsx"));
-const ClassCatalogPage = lazy(() => import("./student/classes/pages/ClassCatalogPage.jsx"));
-const ClassDetailPage = lazy(() => import("./student/classes/pages/ClassDetailPage.jsx"));
-const ModulePage = lazy(() => import("./student/classes/pages/ModulePage.jsx"));
-const QuizIntroPage = lazy(() => import("./student/pages/QuizIntroPage.jsx"));
-const ResultPage = lazy(() => import("./student/pages/ResultPage.jsx"));
-const ResultsHistoryPage = lazy(() => import("./student/pages/ResultsHistoryPage.jsx"));
+const AttemptPage = lazyPage(() => import("./student/pages/AttemptPage.jsx"));
+const AvailableQuizzesPage = lazyPage(() => import("./student/pages/AvailableQuizzesPage.jsx"));
+const ClassCatalogPage = lazyPage(() => import("./student/classes/pages/ClassCatalogPage.jsx"));
+const ClassDetailPage = lazyPage(() => import("./student/classes/pages/ClassDetailPage.jsx"));
+const ModulePage = lazyPage(() => import("./student/classes/pages/ModulePage.jsx"));
+const QuizIntroPage = lazyPage(() => import("./student/pages/QuizIntroPage.jsx"));
+const ResultPage = lazyPage(() => import("./student/pages/ResultPage.jsx"));
+const ResultsHistoryPage = lazyPage(() => import("./student/pages/ResultsHistoryPage.jsx"));
 
 /**
  * Assessments student route slot (D3 "Frontend Design").

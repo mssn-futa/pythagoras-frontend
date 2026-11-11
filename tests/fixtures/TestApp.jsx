@@ -2,23 +2,12 @@ import { useEffect } from 'react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { AppRoutes } from '../../src/App.jsx'
 import AuthProvider from '../../src/features/auth/AuthProvider.jsx'
+import { preloadAllPages } from '../../src/routes/lazyPage.js'
 
-// The app loads route pages as React.lazy chunks (PLAT-07). Import them up front
-// so a test's first render does not spend module-transform time inside its
-// async timeouts; the lazy boundaries themselves are covered by
-// tests/behavior/release-navigation.test.jsx.
-import.meta.glob(
-  [
-    '../../src/features/**/pages/*.jsx',
-    '../../src/pages/student/HomePage.jsx',
-    '../../src/pages/admin/AdminDashboard.jsx',
-    '../../src/pages/admin/student/StudentDashboard.jsx',
-    '../../src/pages/profile/Profile.jsx',
-    '../../src/pages/register/Register.jsx',
-    '../../src/components/layout/AdminLayout.jsx',
-  ],
-  { eager: true },
-)
+// The app loads route pages as lazy chunks (PLAT-07). Load them all up front, so
+// pages render synchronously in tests as they did before code splitting; the
+// lazy boundaries themselves are covered by tests/behavior/release-navigation.test.jsx.
+await preloadAllPages()
 
 /** Shows the current location; optionally records every location visited. */
 export function LocationProbe({ history }) {
