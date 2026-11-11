@@ -3,7 +3,7 @@ import {
   createRule, disableRule, enableRule, listRuns, normalizeRule, normalizeRun, previewRule, reassignRule, toRulePayload, updateRule,
 } from '../../src/features/communication/api/automationsApi.js'
 import {
-  EMPTY_RULE_FORM, formToDraft, minutesToOffset, offsetLabel, offsetToMinutes, ruleFormKey, ruleStatus, ruleToForm, runStateText, scanPlaceholders, scheduleSummary, validateRuleForm,
+  EMPTY_RULE_FORM, formToDraft, minutesToOffset, offsetLabel, offsetToMinutes, ruleFormKey, ruleStatus, ruleToForm, reasonText, runStateText, scanPlaceholders, scheduleSummary, validateRuleForm,
 } from '../../src/features/communication/automations/automationModel.js'
 import { useApiOrigin } from '../fixtures/auth.js'
 import { createAutomationBackend, wireRule, wireRun } from '../fixtures/automations.js'
@@ -125,9 +125,16 @@ describe('rule mapping', () => {
     expect(runStateText('failed').label).toBe('Failed')
     expect(runStateText('failed').help).not.toMatch(/provider/i)
     expect(runStateText('failed', 'no_recipients').help).not.toMatch(/provider/i)
-    expect(runStateText('failed', 'provider_rejected').help).toMatch(/provider did not accept/)
     expect(runStateText('failed', 'provider_failure').help).toMatch(/provider did not accept/)
+    expect(runStateText('failed', 'content_invalid').help).not.toMatch(/provider/i)
     expect(runStateText('completed').help).toBe('Finished with no failed or uncertain messages; see counts.')
+  })
+
+  test('backend reason codes have readable text; unknown codes fall back to verbatim', () => {
+    for (const code of ['superseded_after_handoff', 'content_invalid', 'window_overlap', 'materialize_error', 'no_upcoming_event']) {
+      expect(reasonText(code)).toEqual(expect.any(String))
+    }
+    expect(reasonText('provider_rejected')).toBeNull()
   })
 
   test('unknown audience/kind never default to something that looks operational', () => {

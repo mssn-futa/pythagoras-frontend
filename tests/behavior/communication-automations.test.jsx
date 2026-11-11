@@ -476,7 +476,7 @@ describe('run history', () => {
     wireRun({ id: 3, occurrence_key: 'r:missed', state: 'missed', reason_code: 'missed_catch_up_window', broadcast_id: null, counts: null, recipient_count: null }),
     wireRun({ id: 4, occurrence_key: 'r:cancelled', state: 'cancelled', reason_code: 'source_rescheduled', broadcast_id: 9, counts: counts({ cancelled: 3 }), recipient_count: 3, source: { window_start: null, window_end: null, event: { id: 5, title: 'Usroh', start_time: '2026-11-12T16:00:00Z' }, event_revision: 2 } }),
     wireRun({ id: 5, occurrence_key: 'r:blocked', state: 'blocked', reason_code: 'owner_inactive', broadcast_id: null, counts: null, recipient_count: null }),
-    wireRun({ id: 6, occurrence_key: 'r:failed', state: 'failed', reason_code: 'provider_rejected', broadcast_id: 11, counts: counts({ failed: 4 }) }),
+    wireRun({ id: 6, occurrence_key: 'r:failed', state: 'failed', reason_code: 'provider_failure', broadcast_id: 11, counts: counts({ failed: 4 }) }),
     wireRun({ id: 7, occurrence_key: 'r:uncertain', state: 'uncertain', reason_code: 'delivery_uncertain', broadcast_id: 12, counts: counts({ sent: 2, uncertain: 2 }) }),
     wireRun({ id: 8, occurrence_key: 'r:done', state: 'completed', broadcast_id: 13, counts: counts({ sent: 4 }) }),
     wireRun({ id: 9, occurrence_key: 'r:weird', state: 'exploded', reason_code: 'brand_new_code', broadcast_id: null, counts: null }),
@@ -496,7 +496,7 @@ describe('run history', () => {
     expectIn('r:cancelled', 'Cancelled', 'Reason code: source_rescheduled')
     expect(within(row('r:cancelled')).getByText(/Event: Usroh, starts 12 Nov 2026, 17:00 \(Lagos\) \(schedule revision 2\)/)).toBeVisible()
     expectIn('r:blocked', 'Blocked: owner', 'Reason code: owner_inactive')
-    expectIn('r:failed', 'Failed', 'Reason code: provider_rejected')
+    expectIn('r:failed', 'Failed', 'Reason code: provider_failure')
     expectIn('r:uncertain', 'Uncertain delivery', 'Reason code: delivery_uncertain')
     expectIn('r:done', 'Completed')
     expect(within(row('r:weird')).getByText('Unrecognised state: exploded')).toBeVisible()

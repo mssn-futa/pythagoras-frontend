@@ -1,6 +1,7 @@
 import { http } from 'msw'
 import { fail, ok, url } from './auth.js'
 import { canonicalizeHtml, counts, escapeHtml, htmlToText, page } from './communication.js'
+const fullDocument = (inner) => `<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8"><title>Preview &amp; test</title></head><body style="margin:0;font-family:Arial,sans-serif">${inner}</body></html>`
 
 /*
  * Strict, synthetic COMM-06 stand-in built from D4's route table and request examples. It REJECTS unknown request
@@ -212,7 +213,7 @@ export function createAutomationBackend({ rules = [], runs = {}, previews = {} }
         subject: rule.template.subject,
         body: rule.template.body,
         body_format: rule.template.body_format,
-        rendered_html: rule.template.body_html,
+        rendered_html: fullDocument(rule.template.body_html),
         rendered_text: rule.template.body,
         audience_count: 42,
         skip_reason_code: null,

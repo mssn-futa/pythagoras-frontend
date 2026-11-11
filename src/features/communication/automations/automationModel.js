@@ -65,7 +65,7 @@ const RUN_STATE_TEXT = {
   blocked: { label: "Blocked: owner", tone: "amber", help: "The rule owner was not an active admin, so this occurrence was not created." },
 };
 
-const PROVIDER_REASONS = ["provider_rejected", "provider_failure"];
+const PROVIDER_REASONS = ["provider_failure"];
 const PROVIDER_FAILED_HELP = "The email provider did not accept this occurrence's mail. Open the broadcast for the safe error codes.";
 
 /** Provider wording is used for a failed run only when its reason code says the provider was the cause. */
@@ -74,7 +74,7 @@ export const runStateText = (state, reasonCode = null) =>
     ? { ...RUN_STATE_TEXT.failed, help: PROVIDER_FAILED_HELP }
     : RUN_STATE_TEXT[state] ?? { label: `Unrecognised state: ${state}`, tone: "gray", help: "This state is not known to this page. Nothing is assumed about whether mail was sent." };
 
-// ASSUMPTION: reason_code values are not enumerated in D4; unknown codes are shown verbatim.
+// Reason codes emitted by the backend (docs/communication-automations.md); unknown codes are shown verbatim.
 const REASON_TEXT = {
   no_eligible_summaries: "No published event in the window had an authored summary, so no email was created.",
   no_recipients: "The audience had no active recipients, so no email was created.",
@@ -84,9 +84,13 @@ const REASON_TEXT = {
   source_rescheduled: "The event's time changed, so this reminder became obsolete.",
   rule_disabled: "The rule was disabled before this occurrence was created.",
   owner_inactive: "The rule owner is inactive or not an admin. Reassign the rule to resume runs.",
-  provider_rejected: "The email provider definitively rejected the request (for example a key, sender or content problem).",
   provider_failure: "The email provider failed to accept the mail.",
   delivery_uncertain: "Provider acceptance could not be determined, and a blind resend is not allowed.",
+  superseded_after_handoff: "An earlier version of this reminder was already handed to the provider, so the change was not re-sent. Send a correction as a broadcast if needed.",
+  content_invalid: "The composed message failed the email checks (for example it is too large), so no email was created.",
+  window_overlap: "The schedule changed and this window overlaps one that was already sent, so it was skipped.",
+  materialize_error: "Creating this occurrence failed repeatedly, so it was recorded as failed. Check the server logs.",
+  no_upcoming_event: "No upcoming published event matches this rule yet.",
 };
 
 export const reasonText = (code) => (code ? REASON_TEXT[code] ?? null : null);

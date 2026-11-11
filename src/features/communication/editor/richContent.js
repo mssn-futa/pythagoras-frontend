@@ -65,21 +65,27 @@ export const plainConversionCollapsesWhitespace = (text) => /[ \t]{2,}|^[ \t]+\S
  * fallback: blocks separated by a blank line, list items prefixed ("- " / "1. "),
  * links flattened to "text (href)". The server's own fallback stays authoritative.
  */
+const linkHref = (node) => node?.marks?.find((mark) => mark.type === "link")?.attrs?.href;
+
 function inlineText(nodes = []) {
   let out = "";
   for (let i = 0; i < nodes.length; i += 1) {
     const node = nodes[i];
     if (node.type === "hardBreak") out += "\n";
     else if (node.type === "text") {
-      const href = node.marks?.find((mark) => mark.type === "link")?.attrs?.href;
+      const href = linkHref(node);
       if (!href) out += node.text;
       else {
+        // A link run continues over text and hard breaks that carry the same link mark.
         let run = node.text;
-        while (nodes[i + 1]?.type === "text" && nodes[i + 1].marks?.find((mark) => mark.type === "link")?.attrs?.href === href) {
+        for (;;) {
+          const next = nodes[i + 1];
+          if (next?.type === "text" && linkHref(next) === href) run += next.text;
+          else if (next?.type === "hardBreak" && linkHref(next) === href) run += "\n";
+          else break;
           i += 1;
-          run += nodes[i].text;
         }
-        out += run.trim() === href ? run : `${run} (${href})`;
+        out += run.trim() === href || validateLinkUrl(run.trim())?.href === href ? run : `${run} (${href})`;
       }
     }
   }
