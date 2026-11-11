@@ -1,20 +1,20 @@
 # Frontend hosting on Cloudflare Workers Static Assets — RELEASE-04
 
 Governing designs: D5 "Cloudflare hosting topology", "Deployment and origins" and "Logging throttling and
-security"; D0 "Frontend client and route convention". The React/Vite app is hosted as static assets with only a tiny `/assets/*` guard Worker. PLAT-08 later adds GA4 consent/CSP (use `PUBLIC_EXTRA_CONNECT_ORIGINS` or extend `scripts/hosting/headers.mjs`).
+security"; D0 "Frontend client and route convention". The React/Vite app is hosted as static assets with only a tiny miss-guard Worker. PLAT-08 later adds GA4 consent/CSP (use `PUBLIC_EXTRA_CONNECT_ORIGINS` or extend `scripts/hosting/headers.mjs`).
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `wrangler.jsonc`, `worker/assets-guard.js` | Static assets from `dist/`, `not_found_handling: "single-page-application"` (unknown paths return `/index.html`, 200). A tiny Worker runs only for `/assets/*` and turns a missing asset into 404. |
+| `wrangler.jsonc`, `worker/assets-guard.js` | Static assets from `dist/`, `not_found_handling: "single-page-application"` (unknown navigation paths return `/index.html`, 200). A tiny Worker runs only for non-navigation misses and turns a missing `/assets/*` file into 404. `env.staging` is a separate Worker, `pythagoras-frontend-staging`. |
 | `scripts/hosting/headers.mjs`, `render-headers.mjs` | Validate origin env vars and write `dist/_headers` at build time. Nothing is hard-coded except Google Fonts and the Aladhan API (both switchable). |
 | `scripts/hosting/scan-bundle.mjs` | Fails when `dist/` (text files incl. maps) contains secret patterns, or the build env has secret-looking `VITE_*` names. |
 | `tests/behavior/hosting.test.js` | Unit tests for rendering, validation and the scanner. |
 | `tests/hosting/` | `npm run test:hosting`: production build behind `wrangler dev`, the existing browser specs plus `csp.spec.js`. |
 | `.github/workflows/hosting-checks.yml` | Secret scan + header render check job (no deploy, no secrets). |
 
-`wrangler` is pinned as a devDependency (`wrangler@4.160.0`, installed with `--ignore-scripts --save-exact`): it is
+`wrangler` is pinned as a devDependency (`wrangler@4.154.0`, the newest 4.x release that was at least two weeks old when pinned; installed with `--ignore-scripts --save-exact`): it is
 the only supported way to validate the config (`deploy --dry-run`) and to serve Static Assets locally with `_headers`
 and SPA fallback. It is not part of the browser bundle.
 
@@ -69,12 +69,19 @@ The app has no PWA/service worker and no GA4 yet. PLAT-08 must add the GA4 scrip
 `not_found_handling: "single-page-application"` returns `/index.html` (200) for any path that is not an asset, so
 `/admin/quizzes/1` and `/dawah/content/3` reload into the SPA, where `RequireAdmin`/guards decide access
 (direct private-route reloads stay guarded; the server never serves private data from static assets).
-A missing fingerprinted file must not become `index.html` under the immutable cache rule. Static Assets' built-in SPA
-fallback does not distinguish navigations in local mode (verified: `Sec-Fetch-Mode: navigate`, `no-cors`, `cors` and no header all
-returned index.html for `/assets/missing.js`), so `wrangler.jsonc` sets `run_worker_first: ["/assets/*"]` and
-`worker/assets-guard.js` (about 10 lines) returns `404`, `Cache-Control: no-store`, for any HTML answer under `/assets/`.
-Only `/assets/*` runs the Worker; deep links and the rest are served by Static Assets directly. Also deploy with
-`--old-asset-ttl <seconds>` so a previous release's chunks survive for tabs still open.
+A missing fingerprinted file must not become `index.html` under the immutable cache rule. With the built-in SPA fallback alone,
+`/assets/missing.js` returned `index.html` (200, immutable) for every `Sec-Fetch-Mode`. `worker/assets-guard.js` (about 10
+lines) fixes it without `run_worker_first`: Static Assets serve real files and browser navigations (`Sec-Fetch-Mode: navigate`)
+themselves, and invoke the Worker only for non-navigation requests that match no file, for example a stale
+`<script src="/assets/old-hash.js">`. The Worker returns `404` + `Cache-Control: no-store` only when the path starts with
+`/assets/` and the binding answered HTML; everything else passes through unchanged. Cost rationale: Worker invocations are
+billed and add latency, so hits and navigations (nearly all traffic) must not run it; with `run_worker_first` every asset
+request would.
+Local proof (`wrangler dev`, Worker invocations counted via the local observability API: 0 invocations for a real asset and two deep links, 1 per missing-asset request):
+missing asset with `no-cors`, `cors` or no header returns 404; deep links with `Sec-Fetch-Mode: navigate` return 200 `no-cache`;
+a real asset returns 200 immutable without invoking the Worker. A human *navigating* to a missing `/assets/x.js` still gets the
+SPA (200); that is a typed URL, not a stale subresource. Deploy with `--old-asset-ttl <seconds>` (a `wrangler deploy` option, not
+`versions upload`) so a previous release's chunks survive for tabs still open.
 The favicon is `public/favicon.png` (copy of `src/assets/logo.png`); the dead `/vite.svg` link was replaced.
 
 ## Origin and CORS facts (for RELEASE-06/07, handover)
@@ -94,20 +101,33 @@ checks, `npm run test:hosting` (42 specs, zero unintended CSP violations).
 
 ## Staging deployment (BLOCKED until a Cloudflare account exists)
 
-Do not run these locally without account access. Commands were checked against `wrangler 4.160.0 --help`.
+Do not run these locally without account access. Commands were checked against the installed wrangler `--help`.
+Staging is a separate Worker (`env.staging`, name `pythagoras-frontend-staging`), so production history is untouched.
 
 ```bash
-npx wrangler login                                   # or CLOUDFLARE_API_TOKEN (Workers Scripts:Edit) + CLOUDFLARE_ACCOUNT_ID in CI secrets
+npx wrangler login                                   # or CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID in CI secrets
+# Token permissions: Workers Scripts: Edit; for custom domains also Zone: Read and DNS: Edit (and Workers Routes: Edit
+# if routes are used) on the app zone. Without zone/DNS permission `--domain` fails.
 VITE_API_URL=https://<staging-api> PUBLIC_MEDIA_ORIGIN=https://<staging-media> \
   R2_S3_PRESIGN_ORIGIN=https://<acct>.r2.cloudflarestorage.com npm run build:cloudflare
-npx wrangler deploy --dry-run                        # validates config/assets offline
-npx wrangler versions upload --tag staging --message "RELEASE-04 staging"   # uploads a version without promoting it
-npx wrangler deploy --name pythagoras-frontend --domain <staging-app-hostname> --old-asset-ttl 86400   # promotes + attaches custom domain
-npx wrangler deployments list && npx wrangler rollback  # rollback to previous version (interactive/with a version id)
+npx wrangler deploy --dry-run --env staging          # validates config/assets offline
+
+# Option A: direct deploy to the staging Worker (also attaches the custom domain and keeps old assets for a day)
+npx wrangler deploy --env staging --domain <staging-app-hostname> --old-asset-ttl 86400
+
+# Option B: gradual: upload a version, then promote it explicitly
+npx wrangler versions upload --env staging --tag staging --message "RELEASE-04 staging"   # prints the version id
+npx wrangler versions deploy <version-id>@100% --env staging                               # promote
+npx wrangler deployments list --env staging
+npx wrangler rollback <previous-version-id> --env staging
 ```
+
+`--old-asset-ttl` exists on `wrangler deploy` only. Production uses the same commands without `--env staging`, after the
+staging checklist passes.
 
 Staging proof checklist: custom domains and DNS/TLS for app/API/media; real API and R2 origins; deep links
 `/admin/quizzes/1`, `/dawah/content/3`, `/sign-in?next=...` return the SPA (200) and the guard redirects when
-signed out; `curl -I` shows the rendered `_headers` on `/`, a deep link, `/assets/<hash>.js` (immutable) and a
-missing `/assets/missing.js` (must be 404, `no-store`); API CORS/bearer round trip; direct R2 PUT with
-bucket CORS and no bearer; media Range/206 on the media domain; browser console shows no CSP violations.
+signed out; `curl -I` shows the rendered `_headers` on `/`, a deep link, `/assets/<hash>.js` (immutable); a missing
+`/assets/missing.js` fetched as a subresource (`curl -H 'Sec-Fetch-Mode: no-cors'`) is 404 `no-store`; API CORS/bearer round
+trip; direct R2 PUT with bucket CORS and no bearer; media Range/206 on the media domain; browser console shows no CSP
+violations.

@@ -28,10 +28,14 @@ export function parseOrigin(name, value, { allowInsecure = false } = {}) {
   if (url.search || url.hash || (url.pathname !== '/' && url.pathname !== '')) {
     throw new ConfigError(`${name} must be an origin only (no path, query or fragment; no /api/v1 prefix): ${raw}`)
   }
+  // Only characters that can appear in scheme://host[:port]; rejects ; % , quotes, spaces and newlines that could inject directives.
+  if (!/^https?:\/\/[A-Za-z0-9.:[\]-]+\/?$/.test(raw)) throw new ConfigError(`${name} contains characters that are not valid in an origin: ${JSON.stringify(raw)}`)
   const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
   if (url.protocol !== 'https:' && !(allowInsecure && url.protocol === 'http:' && local)) {
     throw new ConfigError(`${name} must be https (http is only accepted for localhost with HOSTING_ALLOW_INSECURE=1): ${raw}`)
   }
+  const dnsName = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(url.hostname) && !/^[0-9.]+$/.test(url.hostname)
+  if (!dnsName && !(allowInsecure && local)) throw new ConfigError(`${name} must use a DNS hostname (no IP address, trailing dot or odd characters): ${raw}`)
   return url.origin
 }
 
