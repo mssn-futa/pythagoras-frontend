@@ -24,7 +24,6 @@ export default function VideoEmbed({ playback, title }) {
             referrerPolicy="strict-origin-when-cross-origin"
             sandbox="allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox"
             allow="fullscreen; picture-in-picture; encrypted-media"
-            allowFullScreen
           />
         </div>
       ) : (
