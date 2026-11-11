@@ -55,6 +55,21 @@ describe('creating a draft', { timeout: 20_000 }, () => {
     expect(backend.calls.filter((c) => c.method === 'POST')).toEqual([])
   })
 
+  test('editing a field clears its stale error and switching audience clears the audience error', async () => {
+    const backend = createBackend()
+    open(backend)
+    const actor = userEvent.setup()
+    await actor.click(await screen.findByRole('radio', { name: 'One level' }))
+    await actor.click(screen.getByRole('button', { name: 'Save draft' }))
+    expect(screen.getByText('Choose a level.')).toBeVisible()
+    await actor.selectOptions(screen.getByLabelText('Level'), '300')
+    expect(screen.queryByText('Choose a level.')).toBeNull()
+    expect(screen.getByText('Enter a subject.')).toBeVisible()
+    await actor.type(screen.getByLabelText('Subject'), 'Hi')
+    expect(screen.queryByText('Enter a subject.')).toBeNull()
+    expect(screen.getByText('Enter the message text.')).toBeVisible()
+  })
+
   test('server field errors map onto the form', async () => {
     const backend = createBackend()
     open(backend)

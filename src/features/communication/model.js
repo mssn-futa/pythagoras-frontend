@@ -7,7 +7,7 @@ export const POLL_MAX_FAILURES = 3;
 export const SUBJECT_MAX_LENGTH = 200;
 export const LEVELS = LEVEL_OPTIONS;
 
-export const BROADCAST_STATES = ["queued", "processing", "completed", "completed_with_errors", "uncertain"];
+export const BROADCAST_STATES = ["queued", "processing", "completed", "completed_with_errors", "uncertain", "cancelled"];
 export const DELIVERY_STATES = ["queued", "claimed", "sending", "sent", "failed", "uncertain", "skipped", "cancelled"];
 
 export const ACCEPTANCE_DISCLAIMER =
@@ -21,6 +21,7 @@ const BROADCAST_STATE_TEXT = {
   completed: { label: "Completed", tone: "green", help: "Finished with no failed or uncertain messages; see counts." },
   completed_with_errors: { label: "Completed with failures", tone: "amber", help: "Some messages were not accepted by Resend." },
   uncertain: { label: "Uncertain outcome", tone: "red", help: "Acceptance of some messages could not be determined. Investigate before sending again." },
+  cancelled: { label: "Cancelled", tone: "gray", help: "Every message was cancelled before it was handed to Resend. Nothing was sent." },
 };
 
 const DELIVERY_STATE_TEXT = {
@@ -33,6 +34,67 @@ const DELIVERY_STATE_TEXT = {
   skipped: { label: "Skipped (recipient inactive)", tone: "gray" },
   cancelled: { label: "Cancelled", tone: "gray" },
 };
+
+/** Plain-language meaning of the safe error codes the server stores on a delivery (never raw provider text). */
+const ERROR_CODE_TEXT = {
+  INVALID_RECIPIENT: "The email provider rejected this recipient address. Check the student's email address.",
+  INVALID_MESSAGE: "The message could not be built for this recipient, so it was not sent.",
+  TIMEOUT: "The email provider did not answer in time, so it is not known whether the message was accepted.",
+  DEADLINE_EXCEEDED: "The email provider did not answer in time, so it is not known whether the message was accepted.",
+  CONNECTION_ERROR: "The connection to the email provider failed, so it is not known whether the message was accepted.",
+  TRANSPORT_ERROR: "The connection to the email provider failed, so it is not known whether the message was accepted.",
+  TRANSPORT_EXCEPTION: "The connection to the email provider failed, so it is not known whether the message was accepted.",
+  TRANSPORT_NOT_CONFIGURED: "Email sending is not configured on the server.",
+  RATE_LIMITED: "The email provider is limiting how fast messages are accepted.",
+  RATE_LIMIT_EXCEEDED: "The email provider is limiting how fast messages are accepted.",
+  DAILY_QUOTA_EXCEEDED: "The email provider's sending quota was reached.",
+  MONTHLY_QUOTA_EXCEEDED: "The email provider's sending quota was reached.",
+  PROVIDER_ERROR: "The email provider reported a problem.",
+  APPLICATION_ERROR: "The email provider reported a problem.",
+  INTERNAL_SERVER_ERROR: "The email provider reported a problem.",
+  CONCURRENT_IDEMPOTENT_REQUESTS: "The provider was still processing an earlier attempt for this message.",
+  INTERRUPTED: "Sending was interrupted, so it is not known whether the message was accepted.",
+  MALFORMED_SUCCESS: "The provider's answer could not be understood, so it is not known whether the message was accepted.",
+  UNEXPECTED_REDIRECT: "The provider's answer could not be understood, so it is not known whether the message was accepted.",
+  IDEMPOTENCY_WINDOW_EXPIRED: "The provider can no longer confirm the earlier attempt, so the outcome stays uncertain to avoid sending a duplicate.",
+  IDEMPOTENCY_PAYLOAD_CONFLICT: "The provider saw different content under the same send key, so it was not sent again.",
+  REQUEST_SNAPSHOT_MISMATCH: "The stored message no longer matches what was queued, so it was not sent.",
+  RECIPIENT_INACTIVE: "The student is no longer active, so nothing was sent.",
+};
+
+/** Sentence for a delivery's safe error code, or "" when there is no code. State adds the follow-up. */
+export function deliveryErrorExplanation(delivery) {
+  const code = delivery?.errorCode;
+  if (!code) return "";
+  const base = ERROR_CODE_TEXT[code] ?? "The email provider could not complete this message.";
+  if (delivery.state === "queued") return `${base} It will be retried automatically with the same send key, so the student cannot receive a duplicate email.`;
+  if (delivery.state === "failed") return `${base} The provider did not accept it; you can select it and retry.`;
+  if (delivery.state === "uncertain") return `${base} It is not retried from here, to avoid a duplicate.`;
+  return base;
+}
+
+const FIELD_ERROR_KEYS = {
+  subject: ["subject", "template"],
+  body: ["body", "body_html", "template"],
+  bodyHtml: ["body", "body_html", "template"],
+  bodyFormat: ["body", "body_html", "template"],
+  audienceType: ["audience", "department", "level"],
+  department: ["audience", "department", "level"],
+  level: ["audience", "department", "level"],
+  weekday: ["weekday"],
+  localTime: ["local_time"],
+  timezone: ["timezone"],
+  offsetValue: ["offset_minutes"],
+  offsetUnit: ["offset_minutes"],
+  categories: ["categories"],
+};
+
+/** Field errors without those belonging to the fields in `patch` (an edited field's error is stale). */
+export function withoutStaleErrors(errors, patch) {
+  const drop = Object.keys(patch).flatMap((key) => FIELD_ERROR_KEYS[key] ?? []);
+  if (!drop.some((key) => key in errors)) return errors;
+  return Object.fromEntries(Object.entries(errors).filter(([key]) => !drop.includes(key)));
+}
 
 const fallbackText = (state) => ({ label: String(state), tone: "gray", help: "" });
 export const broadcastStateText = (state) => BROADCAST_STATE_TEXT[state] ?? fallbackText(state);
@@ -48,7 +110,7 @@ export const COUNT_LABELS = [
   ["cancelled", "cancelled"],
 ];
 
-const TERMINAL_BROADCAST_STATES = ["completed", "completed_with_errors", "uncertain"];
+const TERMINAL_BROADCAST_STATES = ["completed", "completed_with_errors", "uncertain", "cancelled"];
 
 /** Work is outstanding while the broadcast is queued or processing (not draft or terminal). */
 export function isOutstanding(broadcast) {

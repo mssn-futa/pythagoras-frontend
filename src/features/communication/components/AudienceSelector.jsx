@@ -12,7 +12,7 @@ const OPTIONS = [
 export default function AudienceSelector({ value, errors, onChange, disabled }) {
   const id = useId();
   const message = errors?.length ? errors.join(" ") : null;
-  const set = (patch) => onChange({ ...value, ...patch });
+  const set = (patch) => onChange(patch); // callers merge the patch, so only the edited fields count as changed
   return (
     <fieldset disabled={disabled} aria-describedby={message ? `${id}-error` : undefined} className="min-w-0">
       <legend className="mb-1 block text-sm font-medium text-[#4B5563] dark:text-gray-300">Audience</legend>

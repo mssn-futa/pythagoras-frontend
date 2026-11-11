@@ -9,7 +9,7 @@ import QueueConfirmDialog from "../components/QueueConfirmDialog.jsx";
 import EditorLoader from "../editor/EditorLoader.jsx";
 import { hasRichFormatting, plainConversionCollapsesWhitespace, plainToHtml } from "../editor/richContent.js";
 import SafePreviewFrame from "../editor/SafePreviewFrame.jsx";
-import { allows, draftToForm, EMPTY_FORM, formKey, formToDraft, validateForm } from "../model.js";
+import { allows, draftToForm, EMPTY_FORM, formKey, formToDraft, validateForm, withoutStaleErrors } from "../model.js";
 
 const FORM_FIELDS = ["subject", "body", "body_html", "audience", "department", "level"];
 const VERSION_CONFLICT = "BROADCAST_VERSION_CONFLICT";
@@ -119,12 +119,14 @@ function Editor({ id }) {
   const dirty = formKey(form) !== baseline;
   const set = (patch) => {
     setForm((current) => ({ ...current, ...patch }));
+    setFieldErrors((current) => withoutStaleErrors(current, patch));
     setNotice(null);
   };
 
   const rich = form.bodyFormat === "rich";
   const onRichChange = ({ html, text }) => {
     setForm((current) => (current.bodyFormat === "rich" ? { ...current, bodyHtml: html, body: text } : current));
+    setFieldErrors((current) => withoutStaleErrors(current, { body: text }));
     setNotice(null);
   };
   // Conversion is local: nothing is saved (and no saved content overwritten) until the admin saves.
