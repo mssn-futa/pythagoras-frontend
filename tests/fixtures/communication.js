@@ -1,5 +1,6 @@
 import { delay, http } from 'msw'
 import { fail, ok, url } from './auth.js'
+const fullDocument = (inner) => `<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8"><title>Preview &amp; test</title></head><body style="margin:0;font-family:Arial,sans-serif">${inner}</body></html>`
 
 // Synthetic, test-only broadcast API following D4's routes and envelopes.
 export const B = '/dawah/broadcasts/'
@@ -173,7 +174,7 @@ export function createBackend({ broadcasts = [], deliveries = {}, previewCount =
       if (!row) return missing()
       if (Object.keys(body ?? {}).join() !== 'version') return fail(400, 'VALIDATION_ERROR', 'Send only {"version": n}.')
       if (body.version !== row.version) return fail(409, 'BROADCAST_VERSION_CONFLICT', 'This draft was changed elsewhere.')
-      return ok({ subject: row.subject, body: row.body, body_format: row.body_format, body_html: row.body_html, rendered_text: row.body, rendered_html: row.body_html, audience_count: previewCount })
+      return ok({ subject: row.subject, body: row.body, body_format: row.body_format, body_html: row.body_html, rendered_text: row.body, rendered_html: fullDocument(row.body_html), audience_count: previewCount })
     }),
     http.post(url(`${B}:id/queue/`), async ({ request, params }) => {
       const { body } = await log(request)

@@ -332,7 +332,12 @@ describe('preview sandbox', { timeout: 20_000 }, () => {
     expect(doc).toContain("base-uri 'none'")
     expect(doc).toContain("form-action 'none'")
     expect(doc).toContain('<meta name="referrer" content="no-referrer">')
-    expect(doc).toContain('<body><p>Hi</p></body>')
+    expect(doc).toContain('<p>Hi</p>')
+    // The fixture is a full email document: it is not re-wrapped, CSP is the first element of its head, app style skipped.
+    expect(doc.match(/<!doctype/gi)).toHaveLength(1)
+    expect(doc).toMatch(/^<!DOCTYPE html>\s*<html lang="en"><head><meta http-equiv="Content-Security-Policy"/)
+    expect(doc).toContain('<title>Preview &amp; test</title>')
+    expect(doc).not.toContain('padding:16px')
   })
 
   test('hostile server HTML is never injected into the main document', async () => {
@@ -486,6 +491,16 @@ describe('hardening (review fixes)', { timeout: 20_000 }, () => {
     const link = (text, href) => ({ type: 'text', text, marks: [{ type: 'link', attrs: { href } }] })
     expect(docToPlainText({ type: 'doc', content: [{ type: 'paragraph', content: [link('https://x.test/', 'https://x.test/'), { type: 'hardBreak' }, { type: 'text', text: 'b' }] }, { type: 'paragraph' }] })).toBe('https://x.test/\nb')
     expect(docToPlainText(undefined)).toBe('')
+  })
+
+  test('L2: docToPlainText omits a redundant href and continues a link across a hard break', () => {
+    const link = (text, href) => ({ type: 'text', text, marks: [{ type: 'link', attrs: { href } }] })
+    const brk = (href) => ({ type: 'hardBreak', ...(href ? { marks: [{ type: 'link', attrs: { href } }] } : {}) })
+    const para = (...content) => ({ type: 'doc', content: [{ type: 'paragraph', content }] })
+    expect(docToPlainText(para(link('https://x.com', 'https://x.com/')))).toBe('https://x.com')
+    expect(docToPlainText(para(link('click', 'https://x.com/')))).toBe('click (https://x.com/)')
+    expect(docToPlainText(para(link('a', 'https://x.com/'), brk('https://x.com/'), link('b', 'https://x.com/')))).toBe('a\nb (https://x.com/)')
+    expect(docToPlainText(para(link('a', 'https://x.com/'), brk(), link('b', 'https://x.com/')))).toBe('a (https://x.com/)\nb (https://x.com/)')
   })
 
   test('L3: plain to rich warns when spacing would be collapsed, not otherwise', async () => {
